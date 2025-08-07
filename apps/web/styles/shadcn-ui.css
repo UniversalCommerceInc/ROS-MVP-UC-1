@@ -1,0 +1,119 @@
+/*
+* shadcn-ui.css
+*
+* Update the below to customize your Shadcn UI CSS Colors.
+* Refer to https://ui.shadcn.com/themes for applying new colors.
+* NB: apply the hsl function to the colors copied from the theme.
+ */
+
+@layer base {
+  :root {
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+      sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    --font-heading: var(--font-sans);
+
+    /* Force all backgrounds to pure black */
+    --background: #000000;
+    --foreground: #ffffff;
+
+    --card: #000000;
+    --card-foreground: #ffffff;
+
+    --popover: #000000;
+    --popover-foreground: #ffffff;
+
+    --primary: #ffffff;
+    --primary-foreground: #000000;
+
+    --secondary: #1a1a1a;
+    --secondary-foreground: #ffffff;
+
+    --muted: #1a1a1a;
+    --muted-foreground: #a3a3a3;
+
+    --accent: #1a1a1a;
+    --accent-foreground: #ffffff;
+
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --border: #333333;
+    --input: #1a1a1a;
+    --ring: #ffffff;
+
+    --radius: 0.5rem;
+
+    --chart-1: #f97316;
+    --chart-2: #0d9488;
+    --chart-3: #166534;
+    --chart-4: #fde047;
+    --chart-5: #fed7aa;
+
+    /* Designer colors */
+    --designer-violet: 267 100% 60%;
+    --designer-blue: 210 100% 50%;
+    --designer-silver: 0 0% 80%;
+
+    /* Force sidebar backgrounds to black too */
+    --sidebar-background: #000000;
+    --sidebar-foreground: #ffffff;
+    --sidebar-primary: #ffffff;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: #1a1a1a;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #333333;
+    --sidebar-ring: #ffffff;
+  }
+
+  .dark {
+    /* In dark mode, also force everything to pure black */
+    --background: #000000;
+    --foreground: #ffffff;
+
+    --card: #000000;
+    --card-foreground: #ffffff;
+
+    --popover: #000000;
+    --popover-foreground: #ffffff;
+
+    --primary: #ffffff;
+    --primary-foreground: #000000;
+
+    --secondary: #1a1a1a;
+    --secondary-foreground: #ffffff;
+
+    --muted: #1a1a1a;
+    --muted-foreground: #a3a3a3;
+
+    --accent: #1a1a1a;
+    --accent-foreground: #ffffff;
+
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --border: #333333;
+    --input: #1a1a1a;
+    --ring: #ffffff;
+
+    --chart-1: #3b82f6;
+    --chart-2: #10b981;
+    --chart-3: #f97316;
+    --chart-4: #a855f7;
+    --chart-5: #ec4899;
+
+    /* Designer colors remain the same in dark mode */
+    --designer-violet: 267 100% 60%;
+    --designer-blue: 210 100% 50%;
+    --designer-silver: 0 0% 80%;
+
+    --sidebar-background: #000000;
+    --sidebar-foreground: #ffffff;
+    --sidebar-primary: #ffffff;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: #1a1a1a;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #333333;
+    --sidebar-ring: #ffffff;
+  }
+}

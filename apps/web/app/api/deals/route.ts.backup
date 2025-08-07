@@ -1,0 +1,242 @@
+import { getSupabaseServerClient } from '@kit/supabase/server-client';
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+
+export async function POST(request: Request) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies })
+    
+    // Get the current user from the session
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get the deal data from the request
+    const dealData = await request.json()
+    
+    console.log('Creating deal with data:', dealData)
+
+    console.log('\n=== 🔍 DEAL CREATION DEBUG ===')
+    console.log('👤 User ID:', user.id)
+    console.log('📧 Email:', dealData.email)
+    console.log('🏢 Company:', dealData.companyName)
+
+    // Generate a highly unique deal_id for scale (1000+ users, millions of deals)
+    const generateScalableDealId = () => {
+      const year = new Date().getFullYear()
+      const timestamp = Date.now().toString(36) // Base36 timestamp (shorter)
+      const userHash = user.id.replace(/-/g, '').substring(0, 6) // 6 chars from user ID
+      const randomPart1 = Math.random().toString(36).substring(2, 6) // 4 random chars
+      const randomPart2 = Math.random().toString(36).substring(2, 6) // 4 more random chars
+      const companyHash = dealData.companyName ? 
+        dealData.companyName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() : 
+        'UNK'
+      
+      // Format: DEAL-2025-ABC-u1a2b3-k1x2y3z4-m9n8p7q6
+      // This gives us: Year + Company + UserHash + 2x Random = extremely unique
+      return `DEAL-${year}-${companyHash}-${userHash}-${randomPart1}-${randomPart2}`
+    }
+
+    let dealId = generateScalableDealId()
+    let retryCount = 0
+    const maxRetries = 5
+
+    console.log('\n=== 🎯 SCALABLE DEAL ID GENERATION ===')
+    console.log('🆔 Generated deal_id:', dealId)
+    console.log('📏 Length:', dealId.length)
+    console.log('🔧 Format: DEAL-YEAR-COMPANY-USERHASH-RANDOM1-RANDOM2')
+
+    // Check for uniqueness and retry if needed (very unlikely with this format)
+    while (retryCount < maxRetries) {
+      const { data: existingDeal, error: checkError } = await supabase
+        .from('deals')
+        .select('deal_id')
+        .eq('deal_id', dealId)
+        .single()
+
+      if (!existingDeal) {
+        console.log('✅ Deal ID is unique!')
+        break
+      }
+
+      retryCount++
+      dealId = generateScalableDealId()
+      console.log(`🔄 Retry ${retryCount}: Generated new deal_id:`, dealId)
+    }
+
+    if (retryCount >= maxRetries) {
+      console.error('❌ Failed to generate unique deal_id after', maxRetries, 'attempts')
+      return NextResponse.json({ error: 'Failed to generate unique deal ID' }, { status: 500 })
+    }
+
+    const dealInsertData = {
+      deal_id: dealId, // Use our scalable deal_id
+      user_id: user.id,
+      company_name: dealData.companyName,
+      industry: dealData.industry || 'Software & Technology',
+      value: dealData.dealValue,
+      primary_contact: dealData.email?.split('@')[0] || 'Contact',
+      primary_email: dealData.email,
+      stage: 'interested',
+      pain_points: dealData.painPoints,
+      next_steps: dealData.nextSteps || ['Schedule a meeting'], // Default to "Schedule a meeting"
+      company_size: dealData.companySize,
+      website: dealData.website,
+      next_action: 'Initial outreach to establish contact',
+      probability: 10,
+      close_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      momentum: 0,
+      momentum_trend: 'steady'
+    }
+    
+    console.log('\n=== 💾 DEAL INSERT DEBUG ===')
+    console.log('📝 Deal data to insert:', JSON.stringify(dealInsertData, null, 2))
+    
+    // Start a transaction
+    const { data: deal, error: dealError } = await supabase
+      .from('deals')
+      .insert(dealInsertData)
+      .select()
+      .single()
+
+    if (dealError) {
+      console.error('\n=== ❌ DEAL INSERT ERROR ===')
+      console.error('Error code:', dealError.code)
+      console.error('Error message:', dealError.message)
+      console.error('Error details:', dealError.details)
+      console.error('Error hint:', dealError.hint)
+      console.error('Full error object:', JSON.stringify(dealError, null, 2))
+      
+      // If it's a duplicate key error, let's see what's in the database
+      if (dealError.code === '23505') {
+        console.log('\n=== 🔍 CHECKING EXISTING DEALS ===')
+        const { data: allDeals, error: fetchError } = await supabase
+          .from('deals')
+          .select('deal_id, created_at')
+          .order('created_at', { ascending: false })
+          .limit(10)
+        
+        if (!fetchError && allDeals) {
+          console.log('Recent deals in database:')
+          allDeals.forEach((d, i) => {
+            console.log(`${i + 1}. ${d.deal_id} (${d.created_at})`)
+          })
+        }
+      }
+      
+      return NextResponse.json({ error: 'Failed to create deal', details: dealError }, { status: 500 })
+    }
+    
+    console.log('\n=== ✅ DEAL CREATED SUCCESSFULLY ===')
+    console.log('🎉 Created deal ID:', deal.id)
+    console.log('🆔 Auto-generated deal_id:', deal.deal_id)
+    console.log('🏢 Company:', deal.company_name)
+
+    // Create the primary contact
+    const { data: contact, error: contactError } = await supabase
+      .from('contacts')
+      .insert({
+        user_id: user.id,
+        name: dealData.email?.split('@')[0] || 'Contact',
+        email: dealData.email,
+        role: 'Primary Contact',
+        is_decision_maker: true
+      })
+      .select()
+      .single()
+
+    if (contactError) {
+      console.error('Error creating contact:', contactError)
+      // Don't fail the whole request if contact creation fails
+    }
+
+    // Link the contact to the deal if contact was created
+    if (contact) {
+      const { error: linkError } = await supabase
+        .from('deal_contacts')
+        .insert({
+          deal_id: deal.id,
+          contact_id: contact.id,
+          is_primary: true
+        })
+
+      if (linkError) {
+        console.error('Error linking contact to deal:', linkError)
+        // Don't fail the whole request if linking fails
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      deal,
+      contact
+    })
+  } catch (error) {
+    console.error('Error in POST /api/deals:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const cookieStore = cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    
+    // Get the current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Fetch deals for the current user
+    const { data: deals, error } = await supabase
+      .from('deals')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching deals:', error)
+      return NextResponse.json({ error: 'Failed to fetch deals' }, { status: 500 })
+    }
+
+    // Transform database fields to match frontend interface
+    const transformedDeals = deals?.map(deal => ({
+      id: deal.id,
+      companyName: deal.company_name,
+      industry: deal.industry,
+      value: deal.value,
+      contact: {
+        name: deal.primary_contact || 'Contact',
+        email: deal.primary_email || '',
+        role: 'Primary Contact',
+        isDecisionMaker: true
+      },
+      email: deal.primary_email,
+      stage: deal.stage,
+      createdAt: deal.created_at,
+      closeDate: deal.close_date,
+      probability: deal.probability,
+      painPoints: deal.pain_points,
+      nextSteps: deal.next_steps,
+      companySize: deal.company_size,
+      website: deal.website,
+      dealTitle: deal.deal_title,
+      nextAction: deal.next_action,
+      relationshipInsights: deal.relationship_insights,
+      last_meeting_summary: deal.last_meeting_summary,
+      momentum: deal.momentum || 0,
+      momentumTrend: deal.momentum_trend || 'steady',
+      momentumMarkers: deal.momentum_markers || [],
+      lastMomentumChange: deal.last_momentum_change,
+      blockers: deal.blockers,
+      opportunities: deal.opportunities
+    })) || []
+
+    return NextResponse.json(transformedDeals)
+  } catch (error) {
+    console.error('Error in GET /api/deals:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+} 

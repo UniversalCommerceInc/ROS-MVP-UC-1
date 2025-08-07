@@ -1,0 +1,135 @@
+/* designer-colors.css - Standalone designer color utilities */
+
+/* Base designer violet colors */
+.bg-designer-violet {
+  background-color: hsl(267, 100%, 60%) !important;
+}
+
+.text-designer-violet {
+  color: hsl(267, 100%, 60%) !important;
+}
+
+.border-designer-violet {
+  border-color: hsl(267, 100%, 60%) !important;
+}
+
+/* Designer violet opacity variants */
+.bg-designer-violet\/90 {
+  background-color: hsla(267, 100%, 60%, 0.9) !important;
+}
+
+.bg-designer-violet\/80 {
+  background-color: hsla(267, 100%, 60%, 0.8) !important;
+}
+
+.bg-designer-violet\/50 {
+  background-color: hsla(267, 100%, 60%, 0.5) !important;
+}
+
+.bg-designer-violet\/30 {
+  background-color: hsla(267, 100%, 60%, 0.3) !important;
+}
+
+.bg-designer-violet\/20 {
+  background-color: hsla(267, 100%, 60%, 0.2) !important;
+}
+
+.bg-designer-violet\/10 {
+  background-color: hsla(267, 100%, 60%, 0.1) !important;
+}
+
+/* Border opacity variants */
+.border-designer-violet\/50 {
+  border-color: hsla(267, 100%, 60%, 0.5) !important;
+}
+
+.border-designer-violet\/30 {
+  border-color: hsla(267, 100%, 60%, 0.3) !important;
+}
+
+/* Hover variants */
+.hover\:bg-designer-violet:hover {
+  background-color: hsl(267, 100%, 60%) !important;
+}
+
+.hover\:bg-designer-violet\/90:hover {
+  background-color: hsla(267, 100%, 60%, 0.9) !important;
+}
+
+/* Specific gradient combinations used in your component */
+.bg-gradient-to-b.from-designer-violet\/20.to-designer-violet\/10 {
+  background: linear-gradient(
+    to bottom,
+    hsla(267, 100%, 60%, 0.2),
+    hsla(267, 100%, 60%, 0.1)
+  ) !important;
+}
+
+.bg-gradient-to-r.from-designer-violet\/30.via-designer-violet\/20.to-designer-violet\/30 {
+  background: linear-gradient(
+    to right,
+    hsla(267, 100%, 60%, 0.3),
+    hsla(267, 100%, 60%, 0.2),
+    hsla(267, 100%, 60%, 0.3)
+  ) !important;
+}
+
+.bg-gradient-to-r.from-transparent.via-designer-violet.to-transparent {
+  background: linear-gradient(
+    to right,
+    transparent,
+    hsl(267, 100%, 60%),
+    transparent
+  ) !important;
+}
+
+/* Individual gradient parts */
+.from-designer-violet\/20 {
+  background: linear-gradient(
+    to bottom,
+    hsla(267, 100%, 60%, 0.2),
+    transparent
+  ) !important;
+}
+
+.to-designer-violet\/10 {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    hsla(267, 100%, 60%, 0.1)
+  ) !important;
+}
+
+.from-designer-violet\/30 {
+  background: linear-gradient(
+    to right,
+    hsla(267, 100%, 60%, 0.3),
+    transparent
+  ) !important;
+}
+
+.via-designer-violet\/20 {
+  background: linear-gradient(
+    to right,
+    transparent,
+    hsla(267, 100%, 60%, 0.2),
+    transparent
+  ) !important;
+}
+
+.to-designer-violet\/30 {
+  background: linear-gradient(
+    to right,
+    transparent,
+    hsla(267, 100%, 60%, 0.3)
+  ) !important;
+}
+
+.via-designer-violet {
+  background: linear-gradient(
+    to right,
+    transparent,
+    hsl(267, 100%, 60%),
+    transparent
+  ) !important;
+}

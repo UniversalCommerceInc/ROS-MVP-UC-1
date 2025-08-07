@@ -1,0 +1,2206 @@
+'use client';
+
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
+
+import { useRouter, useSearchParams } from 'next/navigation';
+
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Edit,
+  Eye,
+  Filter,
+  Globe,
+  Grip,
+  LayoutGrid,
+  Loader2,
+  MessageSquare,
+  Mic,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Send,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  User,
+  Users,
+  Waves,
+} from 'lucide-react';
+
+import { Alert, AlertDescription } from '@kit/ui/alert';
+import { AppBreadcrumbs } from '@kit/ui/app-breadcrumbs';
+import { Badge } from '@kit/ui/badge';
+import { Button } from '@kit/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@kit/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@kit/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@kit/ui/dropdown-menu';
+import { If } from '@kit/ui/if';
+import { Input } from '@kit/ui/input';
+import { Label } from '@kit/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@kit/ui/select';
+import { toast } from '@kit/ui/sonner';
+import { Textarea } from '@kit/ui/textarea';
+
+// ===========================================
+// Combined Pipeline Component - All-in-one with responsive layout
+// ===========================================
+
+// Types
+export interface Deal {
+  id: string;
+  companyName: string;
+  industry: string;
+  value: string;
+  valueAmount: number;
+  contact: string;
+  email: string;
+  stage:
+    | 'interested'
+    | 'qualified'
+    | 'demo'
+    | 'proposal'
+    | 'closed-won'
+    | 'closed-lost'
+    | 'follow-up-later';
+  createdAt: string;
+  closeDate?: string;
+  probability?: number;
+  painPoints?: string[];
+  nextSteps?: string[];
+  companySize?: string;
+  website?: string;
+  dealTitle?: string;
+  nextAction?: string;
+  relationshipInsights?: string;
+  last_meeting_summary?: string;
+  momentum: number;
+  momentumTrend: 'accelerating' | 'steady' | 'decelerating' | 'stalled';
+  lastMomentumChange?: string;
+  blockers?: string[];
+  opportunities?: string[];
+}
+
+interface DragState {
+  isDragging: boolean;
+  draggedDeal: Deal | null;
+  dragOffset: { x: number; y: number };
+  dragStartPosition: { x: number; y: number };
+  currentPosition: { x: number; y: number };
+  ghostElement: HTMLElement | null;
+}
+
+// Constants
+const DEAL_STAGES = [
+  'interested',
+  'qualified',
+  'demo',
+  'proposal',
+  'closed-won',
+  'closed-lost',
+  'follow-up-later',
+] as const;
+
+const STAGE_CONFIG = {
+  interested: {
+    label: 'Interested',
+    probability: 15,
+    color:
+      'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/30',
+  },
+  qualified: {
+    label: 'Qualified',
+    probability: 35,
+    color:
+      'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/30',
+  },
+  demo: {
+    label: 'Demo',
+    probability: 55,
+    color:
+      'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/30',
+  },
+  proposal: {
+    label: 'Proposal',
+    probability: 75,
+    color:
+      'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800/30',
+  },
+  'closed-won': {
+    label: 'Closed Won',
+    probability: 100,
+    color:
+      'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/30',
+  },
+  'closed-lost': {
+    label: 'Closed Lost',
+    probability: 0,
+    color: 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800/30',
+  },
+  'follow-up-later': {
+    label: 'Follow Up Later',
+    probability: 20,
+    color:
+      'bg-gray-50 dark:bg-gray-950/20 border-gray-200 dark:border-gray-800/30',
+  },
+};
+
+// Mock data
+const mockDeals: Deal[] = [
+  {
+    id: '1',
+    companyName: 'TechCorp Inc.',
+    industry: 'Software Solutions',
+    value: '$45,000',
+    valueAmount: 45000,
+    contact: 'John Smith',
+    email: 'john@techcorp.com',
+    stage: 'demo',
+    createdAt: '2024-01-15T10:00:00Z',
+    probability: 65,
+    companySize: '200-500 employees',
+    dealTitle: 'Enterprise Software Package',
+    nextAction: 'Follow up on technical demo feedback',
+    momentum: 75,
+    momentumTrend: 'accelerating',
+    closeDate: '2024-03-15',
+    nextSteps: ['Technical requirements review', 'Pricing discussion'],
+    opportunities: ['Expansion to other departments'],
+  },
+  {
+    id: '2',
+    companyName: 'StartupXYZ',
+    industry: 'E-commerce',
+    value: '$25,000',
+    valueAmount: 25000,
+    contact: 'Sarah Wilson',
+    email: 'sarah@startupxyz.com',
+    stage: 'proposal',
+    createdAt: '2024-01-20T09:00:00Z',
+    probability: 80,
+    companySize: '50-100 employees',
+    dealTitle: 'Growth Platform Implementation',
+    momentum: 85,
+    momentumTrend: 'accelerating',
+    closeDate: '2024-02-28',
+    nextSteps: ['Contract review', 'Implementation planning'],
+  },
+  {
+    id: '3',
+    companyName: 'Enterprise Solutions Ltd',
+    industry: 'Manufacturing',
+    value: '$120,000',
+    valueAmount: 120000,
+    contact: 'Mike Johnson',
+    email: 'mike@enterprise.com',
+    stage: 'qualified',
+    createdAt: '2024-01-10T11:00:00Z',
+    probability: 45,
+    companySize: '1000+ employees',
+    dealTitle: 'Complete Digital Transformation',
+    momentum: 60,
+    momentumTrend: 'steady',
+    closeDate: '2024-04-01',
+    blockers: ['Budget approval pending', 'Technical review'],
+  },
+  {
+    id: '4',
+    companyName: 'SmallBiz Co',
+    industry: 'Retail',
+    value: '$15,000',
+    valueAmount: 15000,
+    contact: 'Lisa Chen',
+    email: 'lisa@smallbiz.com',
+    stage: 'interested',
+    createdAt: '2024-01-25T14:00:00Z',
+    probability: 15,
+    companySize: '10-50 employees',
+    dealTitle: 'Point of Sale System',
+    momentum: 45,
+    momentumTrend: 'steady',
+    closeDate: '2024-03-30',
+  },
+  {
+    id: '5',
+    companyName: 'MegaCorp Industries',
+    industry: 'Energy',
+    value: '$500,000',
+    valueAmount: 500000,
+    contact: 'Robert Davis',
+    email: 'robert@megacorp.com',
+    stage: 'closed-won',
+    createdAt: '2024-01-05T11:00:00Z',
+    probability: 100,
+    companySize: '5000+ employees',
+    dealTitle: 'Enterprise Resource Planning',
+    momentum: 95,
+    momentumTrend: 'accelerating',
+    closeDate: '2024-02-15',
+  },
+];
+
+// Utility functions
+const getTimeAgo = (dateString: string) => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+
+  if (diffInDays > 0) return `${diffInDays}d ago`;
+  if (diffInHours > 0) return `${diffInHours}h ago`;
+  return 'Just now';
+};
+
+const getMomentumColor = (momentum: number) => {
+  if (momentum > 70) return 'text-emerald-600';
+  if (momentum < 40) return 'text-red-600';
+  return 'text-amber-600';
+};
+
+const getMomentumIcon = (trend: Deal['momentumTrend']) => {
+  switch (trend) {
+    case 'accelerating':
+      return <TrendingUp className="h-3 w-3 text-emerald-500" />;
+    case 'decelerating':
+      return <TrendingDown className="h-3 w-3 text-red-500" />;
+    case 'stalled':
+      return <Activity className="h-3 w-3 text-red-400" />;
+    default:
+      return <Activity className="h-3 w-3 text-amber-500" />;
+  }
+};
+
+const getStageIcon = (stage: Deal['stage']) => {
+  const iconClass = 'h-4 w-4';
+  switch (stage) {
+    case 'interested':
+      return (
+        <Eye className={`${iconClass} text-blue-600 dark:text-blue-400`} />
+      );
+    case 'qualified':
+      return (
+        <Users
+          className={`${iconClass} text-purple-600 dark:text-purple-400`}
+        />
+      );
+    case 'demo':
+      return (
+        <MessageSquare
+          className={`${iconClass} text-amber-600 dark:text-amber-400`}
+        />
+      );
+    case 'proposal':
+      return (
+        <DollarSign
+          className={`${iconClass} text-orange-600 dark:text-orange-400`}
+        />
+      );
+    case 'closed-won':
+      return (
+        <CheckCircle2
+          className={`${iconClass} text-emerald-600 dark:text-emerald-400`}
+        />
+      );
+    case 'closed-lost':
+      return (
+        <Activity className={`${iconClass} text-red-600 dark:text-red-400`} />
+      );
+    default:
+      return <Building2 className={`${iconClass} text-muted-foreground`} />;
+  }
+};
+
+// Deal Card Component
+const DealCard = memo<{
+  deal: Deal;
+  onDragStart: (e: React.DragEvent, deal: Deal) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onClick: (deal: Deal) => void;
+  dragState: DragState;
+  style?: React.CSSProperties;
+}>(({ deal, onDragStart, onDragEnd, onClick, dragState, style }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const isDragged = dragState.draggedDeal?.id === deal.id;
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
+      const offsetX = e.clientX - rect.left;
+      const offsetY = e.clientY - rect.top;
+
+      e.dataTransfer.setData('text/plain', deal.id);
+      e.dataTransfer.effectAllowed = 'move';
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = 'rgba(0,0,0,0)';
+        ctx.fillRect(0, 0, 1, 1);
+      }
+      e.dataTransfer.setDragImage(canvas, 0, 0);
+
+      onDragStart(e, deal);
+      e.stopPropagation();
+    },
+    [deal, onDragStart],
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (dragState.isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick(deal);
+    },
+    [dragState.isDragging, onClick, deal],
+  );
+
+  return (
+    <Card
+      ref={cardRef}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={onDragEnd}
+      onMouseEnter={() => !dragState.isDragging && setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={handleClick}
+      style={style}
+      className={`deal-card group border-border/40 hover:border-border bg-card/60 cursor-grab border-2 backdrop-blur-sm transition-all duration-200 active:cursor-grabbing ${
+        isDragged ? 'dragging' : ''
+      } ${isHovered && !isDragged ? 'shadow-lg' : 'shadow-sm'}`}
+    >
+      <CardHeader className="space-y-0 pb-3">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-foreground truncate text-base font-bold">
+                {deal.companyName}
+              </CardTitle>
+              <span className="text-muted-foreground text-xs whitespace-nowrap opacity-75">
+                {getTimeAgo(deal.createdAt)}
+              </span>
+            </div>
+            <CardDescription className="text-muted-foreground truncate text-sm">
+              {deal.dealTitle || deal.industry}
+            </CardDescription>
+          </div>
+          <div className="ml-2 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground h-8 w-8 cursor-grab p-0"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <Grip className="h-4 w-4" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClick(deal);
+                  }}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Deal
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3 pt-0">
+        {/* Value and Momentum */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-emerald-600" />
+            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+              {deal.value}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            {getMomentumIcon(deal.momentumTrend)}
+            <span
+              className={`text-sm font-semibold ${getMomentumColor(deal.momentum)}`}
+            >
+              {deal.momentum}%
+            </span>
+          </div>
+        </div>
+
+        {/* Probability */}
+        {deal.probability !== undefined && (
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Target className="h-4 w-4" />
+            <span>{deal.probability}% probability</span>
+          </div>
+        )}
+
+        {/* Close Date */}
+        {deal.closeDate && (
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Calendar className="h-4 w-4" />
+            <span>
+              Close:{' '}
+              {new Date(deal.closeDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+          </div>
+        )}
+
+        {/* Next Action */}
+        {deal.nextAction && (
+          <div className="bg-primary/8 border-primary/20 rounded-lg border p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Clock className="text-primary h-4 w-4" />
+              <span className="text-primary text-sm font-semibold">
+                Next Action
+              </span>
+            </div>
+            <p className="text-muted-foreground line-clamp-2 text-sm">
+              {deal.nextAction}
+            </p>
+          </div>
+        )}
+
+        {/* Next Steps */}
+        {deal.nextSteps && deal.nextSteps.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                Next Steps
+              </span>
+            </div>
+            <ul className="text-muted-foreground space-y-1 text-sm">
+              {deal.nextSteps.slice(0, 2).map((step, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="mt-1 text-emerald-500">•</span>
+                  <span className="line-clamp-1">{step}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Meeting Summary */}
+        {deal.last_meeting_summary && (
+          <div className="text-primary flex items-center gap-2 text-sm">
+            <Mic className="h-4 w-4" />
+            <span>Meeting Summary Available</span>
+          </div>
+        )}
+
+        {/* Alerts and Company Size */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {deal.blockers && deal.blockers.length > 0 && (
+              <Badge variant="destructive" className="h-6 px-2 py-1 text-xs">
+                <AlertTriangle className="mr-1 h-3 w-3" />
+                {deal.blockers.length}
+              </Badge>
+            )}
+          </div>
+
+          {/* Company Size */}
+          {deal.companySize && (
+            <Badge variant="outline" className="h-6 px-2 py-1 text-xs">
+              <Users className="mr-1 h-3 w-3" />
+              {deal.companySize.split(' ')[0]}
+            </Badge>
+          )}
+        </div>
+      </CardContent>
+
+      <CardFooter className="flex justify-between pt-2">
+        <div className="text-muted-foreground text-sm font-medium">
+          {deal.contact || 'No contact'}
+        </div>
+        <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+});
+DealCard.displayName = 'DealCard';
+
+// Stage Column Component
+const StageColumn = memo<{
+  stage: Deal['stage'];
+  deals: Deal[];
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent, stage: Deal['stage']) => void;
+  dragState: DragState;
+  onDealClick: (deal: Deal) => void;
+  onDragStart: (e: React.DragEvent, deal: Deal) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  isPending?: boolean;
+}>(
+  ({
+    stage,
+    deals,
+    onDragOver,
+    onDrop,
+    dragState,
+    onDealClick,
+    onDragStart,
+    onDragEnd,
+    isPending = false,
+  }) => {
+    const columnRef = useRef<HTMLDivElement>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    const config = STAGE_CONFIG[stage];
+    const totalValue = deals.reduce((sum, deal) => {
+      return sum + (deal.valueAmount || 0);
+    }, 0);
+
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    };
+
+    const handleDragOver = useCallback(
+      (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOver(true);
+        onDragOver(e);
+      },
+      [onDragOver],
+    );
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        setIsDragOver(false);
+      }
+    }, []);
+
+    const handleDrop = useCallback(
+      (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        onDrop(e, stage);
+      },
+      [onDrop, stage],
+    );
+
+    return (
+      <div
+        ref={columnRef}
+        className={`kanban-column drop-zone bg-card/40 flex h-full min-h-[700px] w-full flex-col rounded-xl border backdrop-blur-sm transition-all duration-300 ease-out ${
+          isDragOver && dragState.isDragging
+            ? 'border-primary bg-primary/8 ring-primary/30 scale-[1.02] shadow-lg ring-2'
+            : 'border-border/30 hover:border-border/50'
+        } ${isPending ? 'opacity-75' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Column Header */}
+        <div
+          className={`border-border/30 rounded-t-xl border-b p-4 ${config?.color || 'bg-muted/20'}`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {getStageIcon(stage)}
+              <div>
+                <h3 className="text-foreground text-sm font-semibold">
+                  {config?.label || stage}
+                </h3>
+                {config && config.probability > 0 && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">
+                      {config.probability}% progress
+                    </span>
+                    {stage !== 'closed-lost' ? (
+                      <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-red-500" />
+                    )}
+                  </div>
+                )}
+                {totalValue > 0 && (
+                  <p className="text-muted-foreground mt-1 text-xs font-medium">
+                    {formatCurrency(totalValue)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Badge
+              variant="secondary"
+              className="bg-background/60 text-foreground px-1.5 py-0.5 text-xs font-semibold"
+            >
+              {deals.length}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Column Content */}
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+          {deals.map((deal) => (
+            <DealCard
+              key={deal.id}
+              deal={deal}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onClick={onDealClick}
+              dragState={dragState}
+            />
+          ))}
+
+          {deals.length === 0 && (
+            <div className="text-muted-foreground flex flex-col items-center justify-center py-8">
+              <Building2 className="mb-2 h-8 w-8 opacity-30" />
+              <p className="text-sm font-medium">No deals</p>
+              <p className="text-xs opacity-75">
+                in {config?.label?.toLowerCase() || stage}
+              </p>
+            </div>
+          )}
+
+          {/* Enhanced Drop Indicator */}
+          {isDragOver && dragState.isDragging && dragState.draggedDeal && (
+            <div className="border-primary/50 from-primary/10 to-primary/5 animate-pulse rounded-xl border-2 border-dashed bg-gradient-to-r p-3 text-center shadow-inner">
+              <div className="mb-1">
+                <div className="bg-primary/20 mx-auto flex h-5 w-5 items-center justify-center rounded-full">
+                  <ArrowDownRight className="text-primary h-3 w-3" />
+                </div>
+              </div>
+              <p className="text-primary text-xs font-semibold">
+                Drop {dragState.draggedDeal.companyName}
+              </p>
+              <p className="text-primary/70 text-xs">
+                Move to {config?.label || stage}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  },
+);
+StageColumn.displayName = 'StageColumn';
+
+// Other components (MomentumInsights, DailyFocusPath, etc.) remain the same...
+const MomentumInsights = ({ deals }: { deals: Deal[] }) => {
+  const insights = useMemo(() => {
+    const totalDeals = deals.length;
+    const highMomentum = deals.filter((d) => d.momentum > 70).length;
+    const stalledDeals = deals.filter(
+      (d) => d.momentumTrend === 'stalled',
+    ).length;
+    const totalValue = deals.reduce((sum, deal) => sum + deal.valueAmount, 0);
+
+    return {
+      totalDeals,
+      highMomentum,
+      stalledDeals,
+      totalValue,
+      avgMomentum:
+        totalDeals > 0
+          ? deals.reduce((sum, d) => sum + d.momentum, 0) / totalDeals
+          : 0,
+    };
+  }, [deals]);
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Card className="bg-card/50 border-border/50 backdrop-blur-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
+            Stalled Deals
+          </CardTitle>
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-red-600">
+            {insights.stalledDeals}
+          </div>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Need immediate attention
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card/50 border-border/50 backdrop-blur-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-muted-foreground text-sm font-medium">
+            Avg. Momentum
+          </CardTitle>
+          <Activity className="h-4 w-4 text-purple-600" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-foreground text-2xl font-bold">
+            {Math.round(insights.avgMomentum)}%
+          </div>
+          <p className="text-muted-foreground mt-1 text-xs">Pipeline health</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Daily Focus Path Component
+const DailyFocusPath = ({
+  deals,
+  onDealClick,
+}: {
+  deals: Deal[];
+  onDealClick: (deal: Deal) => void;
+}) => {
+  return (
+    <Card className="bg-card/50 border-border/50 backdrop-blur-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Target className="h-5 w-5 text-emerald-500" />
+          Daily Focus Path
+        </CardTitle>
+        <CardDescription>
+          Top priority deals that need your attention today
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {deals.slice(0, 3).map((deal, index) => (
+            <div
+              key={deal.id}
+              className="border-border/50 bg-card/30 hover:bg-card/50 flex cursor-pointer items-center gap-4 rounded-lg border p-4 transition-colors"
+              onClick={() => onDealClick(deal)}
+            >
+              <div className="bg-primary/10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full">
+                <span className="text-primary text-sm font-semibold">
+                  {index + 1}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-foreground truncate font-medium">
+                  {deal.companyName}
+                </h4>
+                <p className="text-muted-foreground truncate text-sm">
+                  {deal.dealTitle}
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-emerald-600">
+                    {deal.value}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {deal.probability}% probability
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  <span className="text-sm font-medium text-emerald-600">
+                    {deal.momentum}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Momentum Stream Component
+const MomentumStream = ({
+  title,
+  deals,
+  variant = 'default',
+  onDealClick,
+}: {
+  title: string;
+  deals: Deal[];
+  variant?: 'default' | 'warning';
+  onDealClick: (deal: Deal) => void;
+}) => {
+  return (
+    <Card className="bg-card/50 border-border/50 backdrop-blur-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Waves
+            className={`h-5 w-5 ${variant === 'warning' ? 'text-amber-500' : 'text-primary'}`}
+          />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {deals.slice(0, 6).map((deal) => (
+            <div
+              key={deal.id}
+              className="border-border/50 bg-card/30 hover:bg-card/50 cursor-pointer rounded-lg border p-3 transition-colors"
+              onClick={() => onDealClick(deal)}
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-foreground truncate text-sm font-medium">
+                  {deal.companyName}
+                </h4>
+                <span className="text-xs font-medium text-emerald-600">
+                  {deal.value}
+                </span>
+              </div>
+              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                <Target className="h-3 w-3" />
+                <span>{deal.probability}%</span>
+                <div className="flex items-center gap-1">
+                  {getMomentumIcon(deal.momentumTrend)}
+                  <span>{deal.momentum}%</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {deals.length === 0 && (
+          <div className="text-muted-foreground py-8 text-center">
+            <Building2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            <p className="text-sm">No deals in this stream</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// Drag Ghost Component
+const DragGhost = ({ dragState }: { dragState: DragState }) => {
+  const ghostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (dragState.isDragging && ghostRef.current) {
+        const x = e.clientX - dragState.dragOffset.x;
+        const y = e.clientY - dragState.dragOffset.y;
+        ghostRef.current.style.left = `${x}px`;
+        ghostRef.current.style.top = `${y}px`;
+      }
+    };
+
+    if (dragState.isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      return () => window.removeEventListener('mousemove', handleMouseMove);
+    }
+  }, [dragState]);
+
+  if (!dragState.isDragging || !dragState.draggedDeal) return null;
+
+  return (
+    <div
+      ref={ghostRef}
+      className="pointer-events-none fixed z-[9999] transition-none"
+      style={{
+        left: dragState.currentPosition.x,
+        top: dragState.currentPosition.y,
+        transform: 'rotate(5deg) scale(1.05)',
+        width: '300px',
+      }}
+    >
+      <Card className="bg-card/95 border-primary/60 border-2 shadow-2xl backdrop-blur-lg">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-foreground text-base font-bold">
+            {dragState.draggedDeal.companyName}
+          </CardTitle>
+          <CardDescription className="text-muted-foreground text-sm">
+            {dragState.draggedDeal.dealTitle || dragState.draggedDeal.industry}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <div className="flex items-center justify-between">
+            <span className="text-lg font-bold text-emerald-600">
+              {dragState.draggedDeal.value}
+            </span>
+            <span className="text-muted-foreground text-sm">
+              {dragState.draggedDeal.probability}% probability
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Enhanced New Deal Dialog with Chat Interface
+const NewDealDialog = ({
+  isOpen,
+  onClose,
+  onDealCreated,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onDealCreated: (dealData: any) => void;
+}) => {
+  const [messages, setMessages] = useState<
+    Array<{
+      id: string;
+      role: 'user' | 'assistant';
+      content: string;
+      timestamp: Date;
+    }>
+  >([]);
+  const [input, setInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [dealData, setDealData] = useState<any>({});
+  const [currentStep, setCurrentStep] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const steps = [
+    {
+      id: 'email',
+      question: "What's the point of contact's email address?",
+      icon: <User className="h-4 w-4" />,
+    },
+    {
+      id: 'website',
+      question: "What's their company website?",
+      icon: <Globe className="h-4 w-4" />,
+    },
+    {
+      id: 'dealValue',
+      question: "What's the deal value?",
+      icon: <DollarSign className="h-4 w-4" />,
+    },
+  ];
+
+  useEffect(() => {
+    if (isOpen) {
+      setMessages([
+        {
+          id: '1',
+          role: 'assistant',
+          content:
+            "Hi! I'll help you create a new deal. Let's start by gathering some information.",
+          timestamp: new Date(),
+        },
+        {
+          id: '2',
+          role: 'assistant',
+          content:
+            steps[0]?.question ||
+            "What's the point of contact's email address?",
+          timestamp: new Date(),
+        },
+      ]);
+      setCurrentStep(0);
+      setDealData({});
+    }
+  }, [isOpen]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const extractDomainName = (website: string): string => {
+    try {
+      let domain = website
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '');
+      domain = domain.split('/')[0];
+      const parts = domain.split('.');
+      if (parts.length >= 2) {
+        return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      }
+      return domain.charAt(0).toUpperCase() + domain.slice(1);
+    } catch (error) {
+      return 'Unknown Company';
+    }
+  };
+
+  const addAssistantMessage = (content: string, nextQuestion?: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content,
+        timestamp: new Date(),
+      },
+      ...(nextQuestion
+        ? [
+            {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: nextQuestion,
+              timestamp: new Date(),
+            },
+          ]
+        : []),
+    ]);
+  };
+
+  const handleSendMessage = async () => {
+    if (!input.trim() || isProcessing) return;
+
+    const userMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: input,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
+    setInput('');
+    setIsProcessing(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    try {
+      const currentStepConfig = steps[currentStep];
+      if (!currentStepConfig) return;
+
+      switch (currentStepConfig.id) {
+        case 'email':
+          setDealData((prev: any) => ({ ...prev, email: currentInput }));
+          if (currentStep + 1 < steps.length) {
+            addAssistantMessage(
+              "Great! Now let's get their company information.",
+              steps[1]?.question,
+            );
+            setCurrentStep(1);
+          }
+          break;
+
+        case 'website':
+          const companyName = extractDomainName(currentInput);
+          setDealData((prev: any) => ({
+            ...prev,
+            website: currentInput,
+            companyName,
+            industry: 'Technology',
+            companySize: '100-500 employees',
+          }));
+
+          addAssistantMessage(
+            `Found it! I've imported data for ${companyName}.\n\n**Industry:** Technology\n**Company Size:** 100-500 employees`,
+            steps[2]?.question,
+          );
+          setCurrentStep(2);
+          break;
+
+        case 'dealValue':
+          setDealData((prev: any) => ({ ...prev, dealValue: currentInput }));
+
+          const finalData = {
+            ...dealData,
+            dealValue: currentInput,
+            id: Date.now().toString(),
+            createdAt: new Date().toISOString(),
+            momentum: 50,
+            momentumTrend: 'steady' as const,
+            stage: 'interested' as const,
+            probability: 15,
+            value: currentInput,
+            valueAmount: parseInt(currentInput.replace(/[^0-9]/g, '')) || 0,
+            contact: 'Contact Person',
+          };
+
+          addAssistantMessage('Perfect! Creating your deal now...');
+
+          setTimeout(() => {
+            onDealCreated(finalData);
+            addAssistantMessage('Deal created successfully! 🎉');
+            setTimeout(() => {
+              onClose();
+            }, 1500);
+          }, 1000);
+          break;
+      }
+    } catch (error) {
+      console.error('Error in handleSendMessage:', error);
+      addAssistantMessage('Sorry, there was an error. Please try again.');
+    }
+
+    setIsProcessing(false);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleClose = () => {
+    setMessages([]);
+    setCurrentStep(0);
+    setInput('');
+    setDealData({});
+    onClose();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="from-background via-background to-muted/20 h-[80vh] max-w-4xl overflow-hidden border bg-gradient-to-br p-0">
+        <DialogHeader className="bg-card/50 border-b px-6 py-3 backdrop-blur-sm">
+          <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+            <div className="bg-muted/50 rounded-lg p-1.5">
+              {steps[currentStep]?.icon || <Building2 className="h-4 w-4" />}
+            </div>
+            Create New Deal
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex h-[calc(100%-60px)] flex-col">
+          {/* Chat Messages */}
+          <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {message.role === 'assistant' && (
+                  <div className="bg-muted border-border flex h-7 w-7 shrink-0 items-center justify-center rounded-full border">
+                    <Building2 className="text-muted-foreground h-3.5 w-3.5" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-[70%] rounded-lg px-3 py-2 shadow-sm ${
+                    message.role === 'assistant'
+                      ? 'bg-card text-foreground border-border/50 border'
+                      : 'bg-primary text-primary-foreground'
+                  }`}
+                >
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                </div>
+
+                {message.role === 'user' && (
+                  <div className="bg-secondary border-border flex h-7 w-7 shrink-0 items-center justify-center rounded-full border">
+                    <User className="text-secondary-foreground h-3.5 w-3.5" />
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="bg-card/30 border-t p-3 backdrop-blur-sm">
+            <div className="mb-2 flex gap-2">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={
+                  steps[currentStep]?.question.includes('email')
+                    ? 'Enter email address...'
+                    : steps[currentStep]?.question.includes('website')
+                      ? 'Enter company website...'
+                      : 'Enter deal value...'
+                }
+                disabled={isProcessing}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={!input.trim() || isProcessing}
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+
+            {/* Progress Indicator */}
+            <div className="flex items-center gap-2">
+              {steps.map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                    index <= currentStep ? 'bg-primary' : 'bg-muted'
+                  }`}
+                />
+              ))}
+            </div>
+            <div className="text-muted-foreground mt-1 text-center text-xs">
+              Step {Math.min(currentStep + 1, steps.length)} of {steps.length}
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Main Combined Pipeline Component
+const CombinedPipelineComponent = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [deals, setDeals] = useState<Deal[]>(mockDeals);
+  const [isPending, startTransition] = useTransition();
+  const [searchTerm, setSearchTerm] = useState(
+    searchParams?.get('search') || '',
+  );
+  const [viewMode, setViewMode] = useState<'traditional' | 'momentum'>(
+    (searchParams?.get('view') as 'traditional' | 'momentum') || 'traditional',
+  );
+  const [isNewDealModalOpen, setIsNewDealModalOpen] = useState(false);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [isReady, setIsReady] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    draggedDeal: null,
+    dragOffset: { x: 0, y: 0 },
+    dragStartPosition: { x: 0, y: 0 },
+    currentPosition: { x: 0, y: 0 },
+    ghostElement: null,
+  });
+
+  // Handle body class for momentum view overflow prevention
+  useEffect(() => {
+    if (viewMode === 'momentum') {
+      document.body.classList.add('momentum-view-active');
+    } else {
+      document.body.classList.remove('momentum-view-active');
+    }
+
+    // Cleanup on unmount or view change
+    return () => {
+      document.body.classList.remove('momentum-view-active');
+    };
+  }, [viewMode]);
+
+  // Responsive width calculation
+  useEffect(() => {
+    const updateContainerWidth = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const newWidth = rect.width;
+        setContainerWidth(newWidth);
+        setIsReady(true);
+        console.log('Pipeline Container Width:', Math.round(newWidth), 'px');
+      }
+    };
+
+    const attemptMeasurement = (attempts = 0) => {
+      if (attempts > 10) return;
+      if (containerRef.current) {
+        updateContainerWidth();
+      } else {
+        setTimeout(() => attemptMeasurement(attempts + 1), 50);
+      }
+    };
+
+    attemptMeasurement();
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const newWidth = entry.contentRect.width;
+          setContainerWidth(newWidth);
+          setIsReady(true);
+        }
+      });
+
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+    }
+
+    const handleResize = () => setTimeout(updateContainerWidth, 100);
+    window.addEventListener('resize', handleResize);
+
+    const handleTransitionEnd = (e: TransitionEvent) => {
+      if (e.propertyName === 'width' || e.propertyName === 'transform') {
+        setTimeout(updateContainerWidth, 50);
+      }
+    };
+    document.addEventListener('transitionend', handleTransitionEnd);
+
+    const observeSidebar = () => {
+      const sidebarElements = document.querySelectorAll(
+        '[data-sidebar], [data-state], .sidebar',
+      );
+      const observers: MutationObserver[] = [];
+
+      sidebarElements.forEach((element) => {
+        const observer = new MutationObserver(() => {
+          setTimeout(updateContainerWidth, 250);
+        });
+
+        observer.observe(element, {
+          attributes: true,
+          attributeFilter: ['data-state', 'data-sidebar', 'class', 'style'],
+        });
+
+        observers.push(observer);
+      });
+
+      return observers;
+    };
+
+    const sidebarObservers = observeSidebar();
+
+    return () => {
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('transitionend', handleTransitionEnd);
+      sidebarObservers.forEach((observer) => observer.disconnect());
+    };
+  }, []);
+
+  // Column configuration
+  const columnConfiguration = useMemo(() => {
+    if (containerWidth === 0 || !isReady) {
+      return {
+        columnWidth: 180,
+        showScrollbar: false,
+        totalWidth: 0,
+        strategy: 'loading',
+      };
+    }
+
+    const totalStages = DEAL_STAGES.length;
+    const gap = 6;
+    const totalGaps = (totalStages - 1) * gap;
+    const padding = 12;
+
+    const availableWidth = containerWidth - totalGaps - padding;
+    const idealColumnWidth = availableWidth / totalStages;
+
+    const ultraWideMin = 300;
+    const wideMin = 250;
+    const normalMin = 200;
+    const compactMin = 180;
+    const tinyMin = 160;
+
+    let strategy = '';
+    let columnWidth = 0;
+    let showScrollbar = false;
+
+    if (idealColumnWidth >= ultraWideMin) {
+      columnWidth = Math.min(idealColumnWidth, 320);
+      strategy = 'ultra-wide';
+    } else if (idealColumnWidth >= wideMin) {
+      columnWidth = idealColumnWidth;
+      strategy = 'wide';
+    } else if (idealColumnWidth >= normalMin) {
+      columnWidth = idealColumnWidth;
+      strategy = 'normal';
+    } else if (idealColumnWidth >= compactMin) {
+      columnWidth = idealColumnWidth;
+      strategy = 'compact';
+    } else if (idealColumnWidth >= tinyMin) {
+      columnWidth = idealColumnWidth;
+      strategy = 'tiny';
+    } else {
+      columnWidth = compactMin;
+      showScrollbar = true;
+      strategy = 'scroll';
+    }
+
+    const totalWidth = columnWidth * totalStages + totalGaps;
+
+    return {
+      columnWidth,
+      showScrollbar,
+      totalWidth,
+      strategy,
+      gap,
+    };
+  }, [containerWidth, isReady]);
+
+  // Deal filtering and grouping
+  const filteredDeals = useMemo(() => {
+    if (!searchTerm) return deals;
+    return deals.filter(
+      (deal) =>
+        deal.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        deal.industry.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        deal.contact.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+  }, [deals, searchTerm]);
+
+  const dealsByStage = useMemo(() => {
+    return DEAL_STAGES.reduce(
+      (acc, stage) => {
+        acc[stage] = filteredDeals.filter((deal) => deal.stage === stage);
+        return acc;
+      },
+      {} as Record<Deal['stage'], Deal[]>,
+    );
+  }, [filteredDeals]);
+
+  const highMomentumDeals = useMemo(() => {
+    return filteredDeals
+      .filter(
+        (deal) =>
+          deal.momentum > 60 &&
+          deal.stage !== 'closed-won' &&
+          deal.stage !== 'closed-lost',
+      )
+      .sort((a, b) => b.momentum - a.momentum)
+      .slice(0, 5);
+  }, [filteredDeals]);
+
+  // Event handlers
+  const handleViewModeChange = (mode: 'traditional' | 'momentum') => {
+    setViewMode(mode);
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set('view', mode);
+    router.push(`?${params.toString()}`);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    const params = new URLSearchParams(searchParams?.toString());
+    if (value) {
+      params.set('search', value);
+    } else {
+      params.delete('search');
+    }
+    router.push(`?${params.toString()}`);
+  };
+
+  const handleDragStart = useCallback((e: React.DragEvent, deal: Deal) => {
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    e.dataTransfer.setData('text/plain', deal.id);
+    e.dataTransfer.setData('application/json', JSON.stringify(deal));
+    e.dataTransfer.effectAllowed = 'move';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(0,0,0,0)';
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    e.dataTransfer.setDragImage(canvas, 0, 0);
+
+    setDragState({
+      isDragging: true,
+      draggedDeal: deal,
+      dragOffset: { x: offsetX, y: offsetY },
+      dragStartPosition: { x: e.clientX, y: e.clientY },
+      currentPosition: { x: e.clientX - offsetX, y: e.clientY - offsetY },
+      ghostElement: null,
+    });
+
+    document.body.classList.add('is-dragging');
+    e.stopPropagation();
+  }, []);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    setDragState({
+      isDragging: false,
+      draggedDeal: null,
+      dragOffset: { x: 0, y: 0 },
+      dragStartPosition: { x: 0, y: 0 },
+      currentPosition: { x: 0, y: 0 },
+      ghostElement: null,
+    });
+
+    document.body.classList.remove('is-dragging');
+    e.stopPropagation();
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, newStage: Deal['stage']) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const dealId = e.dataTransfer.getData('text/plain');
+
+      if (!dealId || !dragState.draggedDeal) {
+        return;
+      }
+
+      if (dragState.draggedDeal.stage === newStage) {
+        return;
+      }
+
+      // Store the dragged deal info before state update (to fix TypeScript error)
+      const draggedDealInfo = {
+        companyName: dragState.draggedDeal.companyName,
+        stage: dragState.draggedDeal.stage,
+        probability: dragState.draggedDeal.probability || 0,
+      };
+
+      // Optimistic update
+      setDeals((prevDeals) =>
+        prevDeals.map((deal) =>
+          deal.id === dealId
+            ? {
+                ...deal,
+                stage: newStage,
+                probability:
+                  STAGE_CONFIG[newStage]?.probability || deal.probability,
+              }
+            : deal,
+        ),
+      );
+
+      toast.success(
+        `Moving ${draggedDealInfo.companyName} to ${STAGE_CONFIG[newStage]?.label}...`,
+      );
+
+      // Simulate server update
+      startTransition(async () => {
+        try {
+          // Simulate API call
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          toast.success(
+            `Successfully moved ${draggedDealInfo.companyName} to ${STAGE_CONFIG[newStage]?.label}`,
+          );
+        } catch (error) {
+          console.error('Error updating deal stage:', error);
+          // Revert optimistic update on error
+          setDeals((prevDeals) =>
+            prevDeals.map((deal) =>
+              deal.id === dealId
+                ? {
+                    ...deal,
+                    stage: draggedDealInfo.stage,
+                    probability: draggedDealInfo.probability,
+                  }
+                : deal,
+            ),
+          );
+          toast.error('Failed to update deal');
+        }
+      });
+    },
+    [dragState.draggedDeal],
+  );
+
+  const handleDealClick = useCallback(
+    (deal: Deal) => {
+      if (!dragState.isDragging) {
+        const searchParams = new URLSearchParams(window.location.search);
+        const currentView = searchParams.get('view') || 'traditional';
+        // Simulate navigation to deal detail
+        console.log(
+          `Navigate to deal: /home/account/dealflow/${deal.id}?view=${currentView}`,
+        );
+        toast.success(`Opening details for ${deal.companyName}`);
+      }
+    },
+    [dragState.isDragging],
+  );
+
+  const handleNewDealCreated = useCallback((dealData: any) => {
+    setDeals((prev) => [dealData, ...prev]);
+    toast.success(`Successfully created deal for ${dealData.companyName}`);
+    setIsNewDealModalOpen(false);
+  }, []);
+
+  const hasDeals = deals.length > 0;
+
+  if (viewMode === 'momentum') {
+    return (
+      <div ref={containerRef} className="mt-4 ml-4 w-full space-y-6">
+        {/* Header */}
+        <div className="w-full">
+          {/* Mobile Layout */}
+          <div className="block lg:hidden">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <h1 className="text-foreground text-xl font-bold tracking-tight">
+                  Deal Pipeline
+                </h1>
+                <p className="text-muted-foreground text-sm">
+                  {filteredDeals.length} deals
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="bg-muted border-border flex rounded-lg border p-1">
+                  <Button
+                    variant={viewMode === 'traditional' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleViewModeChange('traditional')}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <LayoutGrid className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'momentum' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleViewModeChange('momentum')}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <Waves className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                >
+                  <Filter className="h-3 w-3" />
+                </Button>
+                <div className="relative min-w-[120px] flex-1">
+                  <Search className="text-muted-foreground absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2" />
+                  <Input
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="h-7 w-full pl-6 text-xs"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setIsNewDealModalOpen(true)}
+                  disabled={isPending}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Layout */}
+          <div className="hidden lg:block">
+            <div className="flex items-center gap-8">
+              <div className="flex-shrink-0">
+                <h1 className="text-foreground text-2xl font-bold tracking-tight">
+                  Deal Pipeline
+                </h1>
+                <p className="text-muted-foreground text-sm">
+                  Visualize deal momentum and opportunities •{' '}
+                  {filteredDeals.length} deals
+                </p>
+              </div>
+              <div className="flex flex-1 items-center justify-end gap-3 pr-4">
+                <div className="bg-muted border-border flex rounded-lg border p-1">
+                  <Button
+                    variant={viewMode === 'traditional' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleViewModeChange('traditional')}
+                    className="gap-2 px-3 text-sm"
+                  >
+                    <LayoutGrid className="h-4 w-4" /> Traditional
+                  </Button>
+                  <Button
+                    variant={viewMode === 'momentum' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleViewModeChange('momentum')}
+                    className="gap-2 px-3 text-sm"
+                  >
+                    <Waves className="h-4 w-4" /> Momentum
+                  </Button>
+                </div>
+                <Button variant="outline" size="sm" className="gap-2 text-sm">
+                  <Filter className="h-4 w-4" /> Filter
+                </Button>
+                <div className="relative w-64">
+                  <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                  <Input
+                    placeholder="Search deals..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="w-full pl-10"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setIsNewDealModalOpen(true)}
+                  disabled={isPending}
+                >
+                  <Plus className="h-4 w-4" />
+                  {isPending ? 'Creating...' : 'New Deal'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* No Deals State */}
+        <If condition={!hasDeals}>
+          <Alert className="mt-6">
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <span>
+                  Start building your pipeline by creating your first deal.
+                </span>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </If>
+
+        {/* Momentum View Content */}
+        <If condition={hasDeals}>
+          <div className="space-y-8">
+            <MomentumInsights deals={filteredDeals} />
+
+            <DailyFocusPath
+              deals={highMomentumDeals}
+              onDealClick={handleDealClick}
+            />
+
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Momentum Streams</h2>
+                <div className="text-muted-foreground flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-emerald-400"></div>
+                    <span>Accelerating</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-amber-400"></div>
+                    <span>Steady</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-red-400"></div>
+                    <span>Stalled</span>
+                  </div>
+                </div>
+              </div>
+
+              <MomentumStream
+                title="Active Opportunities"
+                deals={filteredDeals.filter(
+                  (d) =>
+                    d.stage !== 'closed-won' &&
+                    d.stage !== 'closed-lost' &&
+                    d.stage !== 'follow-up-later',
+                )}
+                onDealClick={handleDealClick}
+              />
+
+              <MomentumStream
+                title="High Value Deals"
+                deals={filteredDeals
+                  .filter((d) => d.valueAmount > 50000)
+                  .sort((a, b) => b.valueAmount - a.valueAmount)}
+                onDealClick={handleDealClick}
+              />
+
+              <MomentumStream
+                title="Needs Attention"
+                deals={filteredDeals.filter(
+                  (d) =>
+                    d.momentum < 40 || (d.blockers && d.blockers.length > 0),
+                )}
+                onDealClick={handleDealClick}
+                variant="warning"
+              />
+            </div>
+          </div>
+        </If>
+
+        {/* Empty Search State */}
+        <If condition={hasDeals && filteredDeals.length === 0 && searchTerm}>
+          <Alert>
+            <AlertDescription>
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground">
+                  No deals found matching "{searchTerm}". Try adjusting your
+                  search terms.
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </If>
+
+        <NewDealDialog
+          isOpen={isNewDealModalOpen}
+          onClose={() => setIsNewDealModalOpen(false)}
+          onDealCreated={handleNewDealCreated}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="w-full space-y-6">
+      {/* Global styles for drag & drop */}
+      <style jsx global>{`
+        body.is-dragging {
+          cursor: grabbing !important;
+          user-select: none;
+        }
+
+        body.is-dragging .kanban-column,
+        body.is-dragging .drop-zone,
+        body.is-dragging .deal-card {
+          pointer-events: auto !important;
+        }
+
+        .deal-card {
+          transition:
+            transform 0.2s ease-out,
+            box-shadow 0.2s ease-out;
+        }
+
+        .deal-card:hover:not(.dragging) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .deal-card.dragging {
+          opacity: 0.3;
+          transform: rotate(1deg) scale(0.98);
+          transition: none;
+        }
+
+        .kanban-container {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(155, 155, 155, 0.3) transparent;
+        }
+
+        .kanban-container::-webkit-scrollbar {
+          height: 6px;
+        }
+
+        .kanban-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .kanban-container::-webkit-scrollbar-thumb {
+          background-color: rgba(155, 155, 155, 0.3);
+          border-radius: 20px;
+        }
+
+        .pipeline-compact .deal-card {
+          font-size: 0.875rem;
+        }
+
+        .pipeline-compact .deal-card .card-header {
+          padding: 0.75rem;
+        }
+
+        .pipeline-compact .deal-card .card-content {
+          padding: 0.5rem 0.75rem;
+        }
+      `}</style>
+
+      <DragGhost dragState={dragState} />
+
+      {/* Header */}
+      <div className="w-full">
+        {/* Mobile Layout */}
+        <div className="block lg:hidden">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <h1 className="text-foreground text-xl font-bold tracking-tight">
+                Deal Pipeline
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {filteredDeals.length} deals
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <div className="bg-muted border-border flex rounded-lg border p-1">
+                <Button
+                  variant={viewMode === 'traditional' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleViewModeChange('traditional')}
+                  className="h-7 px-2 text-xs"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant={viewMode === 'momentum' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleViewModeChange('momentum')}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Waves className="h-3 w-3" />
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
+                <Filter className="h-3 w-3" />
+              </Button>
+              <div className="relative min-w-[120px] flex-1">
+                <Search className="text-muted-foreground absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2" />
+                <Input
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="h-7 w-full pl-6 text-xs"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setIsNewDealModalOpen(true)}
+                disabled={isPending}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Layout */}
+        <div className="hidden lg:block">
+          <div className="flex items-center gap-8">
+            <div className="flex-shrink-0">
+              <h1 className="text-foreground text-2xl font-bold tracking-tight">
+                Deal Pipeline
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                Manage and track your sales pipeline • {filteredDeals.length}{' '}
+                deals
+              </p>
+            </div>
+            <div className="flex flex-1 items-center justify-end gap-3 pr-16">
+              <div className="bg-muted border-border flex rounded-lg border p-1">
+                <Button
+                  variant={viewMode === 'traditional' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleViewModeChange('traditional')}
+                  className="gap-2 px-3 text-sm"
+                >
+                  <LayoutGrid className="h-4 w-4" /> Traditional
+                </Button>
+                <Button
+                  variant={viewMode === 'momentum' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleViewModeChange('momentum')}
+                  className="gap-2 px-3 text-sm"
+                >
+                  <Waves className="h-4 w-4" /> Momentum
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" className="gap-2 text-sm">
+                <Filter className="h-4 w-4" /> Filter
+              </Button>
+              <div className="relative w-48">
+                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                <Input
+                  placeholder="Search deals..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-10"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => setIsNewDealModalOpen(true)}
+                disabled={isPending}
+              >
+                <Plus className="h-4 w-4" />
+                {isPending ? 'Creating...' : 'New Deal'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* No Deals State */}
+      <If condition={!hasDeals}>
+        <Alert className="mt-6">
+          <AlertDescription>
+            <div className="flex items-center justify-between">
+              <span>
+                Start building your pipeline by creating your first deal.
+              </span>
+            </div>
+          </AlertDescription>
+        </Alert>
+      </If>
+
+      {/* Traditional View Content */}
+      <If condition={hasDeals}>
+        <div className="w-full">
+          {/* Mobile View - Stacked Cards */}
+          <div className="block space-y-4 lg:hidden">
+            {DEAL_STAGES.map((stage) => {
+              const stageDeals = dealsByStage[stage] || [];
+              return (
+                <StageColumn
+                  key={stage}
+                  stage={stage}
+                  deals={stageDeals}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, stage)}
+                  dragState={dragState}
+                  onDealClick={handleDealClick}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  isPending={isPending}
+                />
+              );
+            })}
+          </div>
+
+          {/* Desktop View - Responsive Kanban */}
+          <div className="hidden lg:block">
+            <div
+              className={`kanban-container w-full ${columnConfiguration.strategy === 'compact' || columnConfiguration.strategy === 'tiny' ? 'pipeline-compact' : ''}`}
+              style={{
+                overflowX: columnConfiguration.showScrollbar
+                  ? 'auto'
+                  : 'hidden',
+                overflowY: 'hidden',
+                paddingRight: columnConfiguration.showScrollbar ? '8px' : '0',
+              }}
+            >
+              <div
+                className="flex pb-4"
+                style={{
+                  gap: `${columnConfiguration.gap}px`,
+                  width: columnConfiguration.showScrollbar
+                    ? `${columnConfiguration.totalWidth}px`
+                    : '100%',
+                }}
+              >
+                {DEAL_STAGES.map((stage) => {
+                  const stageDeals = dealsByStage[stage] || [];
+                  return (
+                    <div
+                      key={stage}
+                      className="flex-shrink-0"
+                      style={{
+                        width: `${columnConfiguration.columnWidth}px`,
+                        minWidth: `${columnConfiguration.columnWidth}px`,
+                        maxWidth: `${columnConfiguration.columnWidth}px`,
+                      }}
+                    >
+                      <StageColumn
+                        stage={stage}
+                        deals={stageDeals}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, stage)}
+                        dragState={dragState}
+                        onDealClick={handleDealClick}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        isPending={isPending}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </If>
+
+      {/* Empty Search State */}
+      <If condition={hasDeals && filteredDeals.length === 0 && searchTerm}>
+        <Alert>
+          <AlertDescription>
+            <div className="py-8 text-center">
+              <p className="text-muted-foreground">
+                No deals found matching "{searchTerm}". Try adjusting your
+                search terms.
+              </p>
+            </div>
+          </AlertDescription>
+        </Alert>
+      </If>
+
+      <NewDealDialog
+        isOpen={isNewDealModalOpen}
+        onClose={() => setIsNewDealModalOpen(false)}
+        onDealCreated={handleNewDealCreated}
+      />
+    </div>
+  );
+};
+
+export default CombinedPipelineComponent;

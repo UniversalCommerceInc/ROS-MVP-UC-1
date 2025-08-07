@@ -1,0 +1,93 @@
+import { getDatabaseWebhookHandlerService } from '@kit/database-webhooks';
+import { getLogger } from '@kit/shared/logger';
+import { getServerMonitoringService } from '@kit/monitoring/server';
+import { enhanceRouteHandler } from '@kit/next/routes';
+
+/**
+ * @name POST
+ * @description POST handler for the webhook route that handles the webhook event
+ * Enhanced with production security and environment validation
+ */
+export const POST = enhanceRouteHandler(
+  async ({ request }) => {
+    const logger = await getLogger();
+    const service = getDatabaseWebhookHandlerService();
+
+    try {
+      const signature = request.headers.get('X-Supabase-Event-Signature');
+      const expectedSignature = process.env.SUPABASE_WEBHOOK_SECRET || 'WEBHOOKSECRET';
+
+      // Enhanced signature validation
+      if (!signature) {
+        logger.warn('Webhook request missing signature header');
+        return new Response('Missing signature', { status: 400 });
+      }
+
+      // Validate signature for production security
+      if (process.env.NODE_ENV === 'production' && signature !== expectedSignature) {
+        logger.error('Webhook signature validation failed', {
+          providedSignature: signature.substring(0, 10) + '...',
+          expectedLength: expectedSignature.length,
+        });
+        return new Response('Invalid signature', { status: 401 });
+      }
+
+      // Environment validation for debugging
+      const envCheck = {
+        hasEmailSender: !!process.env.EMAIL_SENDER,
+        hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
+        hasProductName: !!process.env.NEXT_PUBLIC_PRODUCT_NAME,
+        hasWebhookSecret: !!process.env.SUPABASE_WEBHOOK_SECRET,
+      };
+
+      // Log environment issues
+      const missingEnvVars = Object.entries(envCheck)
+        .filter(([_, exists]) => !exists)
+        .map(([key]) => key);
+
+      if (missingEnvVars.length > 0) {
+        logger.warn('Missing environment variables for webhook processing', {
+          missingVars: missingEnvVars,
+        });
+      }
+
+      const body = await request.clone().json();
+
+      logger.info('Processing webhook event', {
+        eventType: body.table ? `${body.table}.${body.type}` : 'unknown',
+        hasSignature: !!signature,
+        timestamp: new Date().toISOString(),
+      });
+
+      // handle the webhook event
+      await service.handleWebhook({
+        body,
+        signature,
+      });
+
+      logger.info('Webhook processed successfully', {
+        eventType: body.table ? `${body.table}.${body.type}` : 'unknown',
+        timestamp: new Date().toISOString(),
+      });
+
+      // return a successful response
+      return new Response(null, { status: 200 });
+    } catch (error) {
+      logger.error('Webhook processing failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        url: request.url,
+        timestamp: new Date().toISOString(),
+      });
+
+      const monitoringService = await getServerMonitoringService();
+      await monitoringService.ready();
+      await monitoringService.captureException(error as Error);
+
+      // return an error response
+      return new Response(null, { status: 500 });
+    }
+  },
+  {
+    auth: false,
+  },
+);
