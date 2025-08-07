@@ -16,6 +16,8 @@ import {
 } from '@kit/ui/dialog';
 import { toast } from '@kit/ui/sonner';
 
+import { MicrosoftLogo } from '../[account]/emails/_components/email-integrations';
+
 interface AutoEmailConnectionProps {
   accountId: string;
   hasEmailConnected: boolean;
@@ -241,15 +243,7 @@ export function AutoEmailConnection({
                 className="h-12 w-full justify-start gap-3 hover:border-slate-600 hover:bg-slate-600 hover:text-white"
               >
                 <div className="flex flex-1 items-center gap-2">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
-                    <path fill="#0078D4" d="M0 0h11.377v11.372H0V0z" />
-                    <path fill="#0078D4" d="M12.623 0H24v11.372H12.623V0z" />
-                    <path fill="#0078D4" d="M0 12.623h11.377V24H0V12.623z" />
-                    <path
-                      fill="#0078D4"
-                      d="M12.623 12.623H24V24H12.623V12.623z"
-                    />
-                  </svg>
+                  <MicrosoftLogo className="h-5 w-5" />
                   <div className="text-left">
                     <div className="text-foreground font-medium">
                       Outlook & Microsoft Calendar
