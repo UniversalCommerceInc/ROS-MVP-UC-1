@@ -844,7 +844,7 @@ export default function MeetingSummary({
                   <>
                     <Loader2 className="text-designer-violet h-3 w-3 animate-spin" />
                     <span className="text-designer-violet text-xs">
-                      Syncing with MeetGeek...
+                      Syncing with AI Notetaker...
                     </span>
                   </>
                 ) : null}
@@ -1025,7 +1025,7 @@ export default function MeetingSummary({
                     <div className="space-y-2 py-3 text-center">
                       <p className="text-sm text-white/50">
                         Meeting completed - click to sync transcript from
-                        MeetGeek
+                        AI Notetaker
                       </p>
                       <Button
                         variant="outline"

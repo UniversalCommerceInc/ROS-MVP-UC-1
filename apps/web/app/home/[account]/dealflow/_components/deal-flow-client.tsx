@@ -50,6 +50,7 @@ import { useDealsStream } from '../_lib/hooks/use-deals-stream';
 import { useEnhancedAutoSync } from '../_lib/hooks/use-enhanced-auto-sync';
 import { useTranscriptsStream } from '../_lib/hooks/use-transcripts-stream';
 import { mockDeals } from '../_lib/mock';
+import { cleanCompanyName } from '../_lib/utils';
 import DailyFocusPath from './daily-focus-path';
 import { DealAssignment } from './deal-assignment';
 import {
@@ -114,6 +115,10 @@ export interface Deal {
   lastMomentumChange?: string;
   blockers?: string[];
   opportunities?: string[];
+  // Assignment fields
+  assigned_to?: string; // User ID of assigned team member
+  assignedUserName?: string; // Name of assigned user (populated via join)
+  assignedUserEmail?: string; // Email of assigned user (populated via join)
 }
 
 interface DragState {
@@ -227,18 +232,22 @@ const SOURCE_CONFIG = {
 const DealCard = memo(
   ({
     deal,
+    accountSlug,
     onDragStart,
     onDragEnd,
     onClick,
     onDelete,
+    onDealsUpdate,
     dragState,
     style,
   }: {
     deal: Deal;
+    accountSlug: string;
     onDragStart: (e: React.DragEvent, deal: Deal) => void;
     onDragEnd: (e: React.DragEvent) => void;
     onClick: (deal: Deal) => void;
     onDelete: (deal: Deal) => void;
+    onDealsUpdate: (updateFn: (deals: Deal[]) => Deal[]) => void;
     dragState: DragState;
     style?: React.CSSProperties;
   }) => {
@@ -349,8 +358,8 @@ const DealCard = memo(
               </span>
             </div>
           </div>
-          <CardTitle className="text-base font-bold text-white">
-            {deal.companyName?.replace(/^https?:\/\//, '') || 'Untitled Deal'}
+          <CardTitle className="truncate text-base font-bold text-white">
+            {cleanCompanyName(deal.companyName)}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6 pt-0 pb-2">
@@ -384,14 +393,44 @@ const DealCard = memo(
           )}
         </CardContent>
         <CardFooter className="flex items-center justify-between p-6 pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hover:bg-accent hover:text-accent-foreground h-auto rounded-md p-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MessageSquare className="text-designer-violet h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hover:bg-accent hover:text-accent-foreground h-auto rounded-md p-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MessageSquare className="text-designer-violet h-4 w-4" />
+            </Button>
+            
+            {/* Assignment Display - Now Clickable */}
+            <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+              <DealAssignment
+                dealId={deal.id}
+                currentAssignedTo={deal.assigned_to}
+                accountSlug={accountSlug}
+                variant="badge"
+                showLabel={false}
+                onAssignmentChange={(newAssignedTo) => {
+                  // Update local state via callback
+                  onDealsUpdate(prev => prev.map(d => 
+                    d.id === deal.id 
+                      ? { ...d, assigned_to: newAssignedTo } 
+                      : d
+                  ));
+                  
+                  // Show success toast
+                  if (newAssignedTo) {
+                    toast.success(`Deal assigned successfully`);
+                  } else {
+                    toast.success('Deal unassigned');
+                  }
+                }}
+                className="text-xs"
+              />
+            </div>
+          </div>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -430,6 +469,7 @@ const StageColumn = memo(
   ({
     stage,
     deals,
+    accountSlug,
     onDragOver,
     onDragLeave,
     onDrop,
@@ -438,10 +478,12 @@ const StageColumn = memo(
     onDragStart,
     onDragEnd,
     onDeleteDeal,
+    onDealsUpdate,
     getStageDisplayName,
   }: {
     stage: Deal['stage'];
     deals: Deal[];
+    accountSlug: string;
     onDragOver: (e: React.DragEvent, stage: Deal['stage']) => void;
     onDragLeave: (e: React.DragEvent) => void;
     onDrop: (e: React.DragEvent, stage: Deal['stage']) => void;
@@ -450,6 +492,7 @@ const StageColumn = memo(
     onDragStart: (e: React.DragEvent, deal: Deal) => void;
     onDragEnd: (e: React.DragEvent) => void;
     onDeleteDeal: (deal: Deal) => void;
+    onDealsUpdate: (updateFn: (deals: Deal[]) => Deal[]) => void;
     getStageDisplayName: (stage: Deal['stage']) => string;
   }) => {
     const columnRef = useRef<HTMLDivElement>(null);
@@ -665,10 +708,12 @@ const StageColumn = memo(
               )}
               <DealCard
                 deal={deal}
+                accountSlug={accountSlug}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onClick={onDealClick}
                 onDelete={onDeleteDeal}
+                onDealsUpdate={onDealsUpdate}
                 dragState={dragState}
                 style={{
                   transform:
@@ -742,9 +787,11 @@ const DragGhost = ({ dragState }: { dragState: DragState }) => {
 
 export default function DealFlowClient({
   accountId,
+  accountSlug,
   userId,
 }: {
   accountId: string;
+  accountSlug: string;
   userId: string;
 }) {
   const router = useRouter();
@@ -1562,7 +1609,7 @@ export default function DealFlowClient({
                     </Button>
                   </div>
                   <DealAssignmentFilter
-                    accountSlug={account}
+                    accountSlug={accountSlug}
                     currentUserId={userId}
                     onFilterChange={setAssignmentFilter}
                     className="text-xs sm:text-sm"
@@ -1640,6 +1687,7 @@ export default function DealFlowClient({
                         key={stage}
                         stage={stage}
                         deals={stageDeals}
+                        accountSlug={accountSlug}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
@@ -1648,6 +1696,7 @@ export default function DealFlowClient({
                         onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
                         onDeleteDeal={handleDeleteDeal}
+                        onDealsUpdate={setDeals}
                         getStageDisplayName={getStageDisplayNameWithCustom}
                       />
                     );
@@ -1665,6 +1714,7 @@ export default function DealFlowClient({
                             key={stage}
                             stage={stage}
                             deals={stageDeals}
+                            accountSlug={accountSlug}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
@@ -1673,6 +1723,7 @@ export default function DealFlowClient({
                             onDragStart={handleDragStart}
                             onDragEnd={handleDragEnd}
                             onDeleteDeal={handleDeleteDeal}
+                            onDealsUpdate={setDeals}
                             getStageDisplayName={getStageDisplayNameWithCustom}
                           />
                         );
@@ -1697,6 +1748,7 @@ export default function DealFlowClient({
         <EnhancedDealDetail
           deal={selectedDeal}
           accountId={accountId}
+          accountSlug={accountSlug}
           isOpen={isDealDetailOpen}
           onClose={() => {
             setIsDealDetailOpen(false);

@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+import { toast } from 'sonner';
 
 import { Badge } from '@kit/ui/badge';
 import { Button } from '@kit/ui/button';
@@ -26,6 +28,15 @@ interface Deal {
 
 interface DataImportDialogProps {
   deals: Deal[];
+  duplicateCheckResult?: {
+    existingDeals: Deal[];
+    newDeals: Deal[];
+    duplicateInfo: Array<{
+      importDeal: Deal;
+      existingDeal: any;
+      reason: string;
+    }>;
+  } | null;
   isOpen: boolean;
   onClose: () => void;
   onImport: (selectedDeals: Deal[]) => void;
@@ -50,6 +61,7 @@ const stageColors = {
 
 const DataImportDialog: React.FC<DataImportDialogProps> = ({
   deals,
+  duplicateCheckResult,
   isOpen,
   onClose,
   onImport,
@@ -58,6 +70,9 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
   const [selectedStages, setSelectedStages] = useState<Set<string>>(new Set());
   const [isImporting, setIsImporting] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'category'>('all');
+  const [duplicateToastShown, setDuplicateToastShown] = useState(false); // Add this flag
+  const [lastDuplicateCount, setLastDuplicateCount] = useState(0); // Track duplicate count
+  const toastShownRef = useRef(false); // Ref to prevent double calls
 
   // Group deals by stage for category view
   const dealsByStage = deals.reduce(
@@ -72,19 +87,106 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
     {} as Record<string, Deal[]>,
   );
 
-  // Initialize all deals as selected when dialog opens
+  // Show duplicate toast when dialog opens if duplicates found (only once per session)
+  useEffect(() => {
+    const duplicateCount = duplicateCheckResult?.existingDeals.length || 0;
+
+    if (isOpen && duplicateCount > 0 && !toastShownRef.current) {
+      // Mark as shown immediately to prevent double calls
+      toastShownRef.current = true;
+
+      toast.warning(
+        `${duplicateCount} duplicate deal${duplicateCount > 1 ? 's' : ''} found`,
+        {
+          description: `These deals already exist in your system and have been excluded from selection. You can manually select them if needed.`,
+          duration: 5000,
+        },
+      );
+
+      setDuplicateToastShown(true);
+      setLastDuplicateCount(duplicateCount);
+    }
+  }, [isOpen, duplicateCheckResult?.existingDeals.length]);
+
+  // Reset duplicate toast flag when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setDuplicateToastShown(false);
+      setLastDuplicateCount(0);
+      toastShownRef.current = false; // Reset ref
+    }
+  }, [isOpen]);
+
+  // Initialize selection - exclude existing deals by default
   useEffect(() => {
     if (deals.length > 0) {
       console.log('🔄 Initializing dialog with deals:', deals.length);
-      const allDealIds = new Set(deals.map((deal) => deal.id));
-      const allStages = new Set(Object.keys(dealsByStage));
-      setSelectedDeals(allDealIds);
-      setSelectedStages(allStages);
+
+      let initialSelectedDeals: Set<string>;
+      let initialSelectedStages: Set<string>;
+
+      if (
+        duplicateCheckResult &&
+        duplicateCheckResult.existingDeals.length > 0
+      ) {
+        // Only select new deals by default, exclude duplicates
+        const newDealIds = new Set(
+          duplicateCheckResult.newDeals.map((deal) => deal.id),
+        );
+        initialSelectedDeals = newDealIds;
+
+        // Group new deals by stage
+        const newDealsByStage = duplicateCheckResult.newDeals.reduce(
+          (acc, deal) => {
+            const stageName = deal.stage_name || 'Lead';
+            if (!acc[stageName]) {
+              acc[stageName] = [];
+            }
+            acc[stageName].push(deal);
+            return acc;
+          },
+          {} as Record<string, Deal[]>,
+        );
+
+        initialSelectedStages = new Set(Object.keys(newDealsByStage));
+
+        console.log(
+          `📋 Excluding ${duplicateCheckResult.existingDeals.length} existing deals from initial selection`,
+        );
+      } else {
+        // No duplicates found, select all deals
+        const allDealIds = new Set(deals.map((deal) => deal.id));
+        const allStages = new Set(Object.keys(dealsByStage));
+        initialSelectedDeals = allDealIds;
+        initialSelectedStages = allStages;
+      }
+
+      setSelectedDeals(initialSelectedDeals);
+      setSelectedStages(initialSelectedStages);
+
       console.log(
-        `📋 Initialized selection: ${allDealIds.size} deals, ${allStages.size} stages`,
+        `📋 Initialized selection: ${initialSelectedDeals.size} deals, ${initialSelectedStages.size} stages`,
       );
     }
-  }, [deals.length]); // Only depend on deals.length, not dealsByStage to avoid infinite loops
+  }, [deals.length, duplicateCheckResult]);
+
+  /**
+   * Check if a deal is a duplicate
+   */
+  const isDuplicateDeal = (dealId: string): boolean => {
+    return (
+      duplicateCheckResult?.existingDeals.some((d) => d.id === dealId) || false
+    );
+  };
+
+  /**
+   * Get duplicate info for a specific deal
+   */
+  const getDuplicateInfo = (dealId: string) => {
+    return duplicateCheckResult?.duplicateInfo.find(
+      (info) => info.importDeal.id === dealId,
+    );
+  };
 
   /**
    * Toggle selection of individual deal
@@ -97,11 +199,22 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
     const stageName = deal?.stage_name || 'Lead';
 
     if (newSelected.has(dealId)) {
+      // Deselecting - no toast needed, this is safe
       newSelected.delete(dealId);
       console.log(`❌ Deselected deal: ${dealId}`);
     } else {
+      // Selecting - only show warning if it's a duplicate
       newSelected.add(dealId);
       console.log(`✅ Selected deal: ${dealId}`);
+
+      // Check if this is a duplicate deal and show friendly warning
+      if (isDuplicateDeal(dealId)) {
+        const duplicateInfo = getDuplicateInfo(dealId);
+        toast.warning('Selecting Duplicate Deal', {
+          description: `"${deal?.deal_title || 'Untitled'}" at ${deal?.company_name || 'Unknown'} already exists in your system. You can still select it if needed.`,
+          duration: 3000,
+        });
+      }
     }
 
     setSelectedDeals(newSelected);
@@ -129,6 +242,17 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
 
     const stageDeals = dealsByStage[stageName] || [];
     const isStageSelected = selectedStages.has(stageName);
+
+    // Check if stage contains duplicates
+    const duplicatesInStage = stageDeals.filter((deal) =>
+      isDuplicateDeal(deal.id),
+    );
+    if (duplicatesInStage.length > 0 && !isStageSelected) {
+      toast.warning('Stage contains duplicates', {
+        description: `${duplicatesInStage.length} duplicate deal${duplicatesInStage.length > 1 ? 's' : ''} in "${stageName}" stage will be selected. These deals already exist in your system.`,
+        duration: 4000,
+      });
+    }
 
     setSelectedDeals((prev) => {
       const newSelected = new Set(prev);
@@ -171,6 +295,14 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
   const handleSelectAll = () => {
     console.log('🔄 Selecting all deals');
 
+    // Check if there are duplicates that will be selected
+    if (duplicateCheckResult && duplicateCheckResult.existingDeals.length > 0) {
+      toast.warning('Selecting all deals including duplicates', {
+        description: `${duplicateCheckResult.existingDeals.length} duplicate deal${duplicateCheckResult.existingDeals.length > 1 ? 's' : ''} will be selected. These deals already exist in your system.`,
+        duration: 4000,
+      });
+    }
+
     const allDealIds = new Set(deals.map((deal) => deal.id));
     const allStages = new Set(Object.keys(dealsByStage));
 
@@ -198,11 +330,75 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
    * Handle import button click
    */
   const handleImport = async () => {
-    setIsImporting(true);
     const selectedDealsArray = deals.filter((deal) =>
       selectedDeals.has(deal.id),
     );
 
+    // Check if any selected deals are duplicates
+    const duplicateDeals = selectedDealsArray.filter((deal) =>
+      isDuplicateDeal(deal.id),
+    );
+
+    if (duplicateDeals.length > 0) {
+      // Show toast warning about duplicates and don't proceed with import
+      toast.warning(
+        `Cannot import ${duplicateDeals.length} duplicate deal${duplicateDeals.length > 1 ? 's' : ''}`,
+        {
+          description: `Please uncheck the duplicate deal${duplicateDeals.length > 1 ? 's' : ''} before importing. These deals already exist in your system.`,
+          duration: 6000,
+          action: {
+            label: 'Uncheck Duplicates',
+            onClick: () => {
+              // Auto-uncheck duplicate deals
+              const duplicateIds = new Set(duplicateDeals.map((d) => d.id));
+
+              setSelectedDeals((prev) => {
+                const newSet = new Set(prev);
+                duplicateIds.forEach((id) => newSet.delete(id));
+                return newSet;
+              });
+
+              // Update stage selections properly
+              setSelectedStages((prev) => {
+                const newStages = new Set<string>();
+
+                // Check each stage to see if it should remain selected
+                Object.entries(dealsByStage).forEach(
+                  ([stageName, stageDeals]) => {
+                    const nonDuplicateDealsInStage = stageDeals.filter(
+                      (d) => !duplicateIds.has(d.id),
+                    );
+                    const selectedNonDuplicateDealsInStage = stageDeals.filter(
+                      (d) => selectedDeals.has(d.id) && !duplicateIds.has(d.id),
+                    );
+
+                    // If all non-duplicate deals in this stage are selected, keep stage selected
+                    if (
+                      nonDuplicateDealsInStage.length > 0 &&
+                      selectedNonDuplicateDealsInStage.length ===
+                        nonDuplicateDealsInStage.length
+                    ) {
+                      newStages.add(stageName);
+                    }
+                  },
+                );
+
+                return newStages;
+              });
+
+              toast.success('Duplicate deals unchecked', {
+                description:
+                  'You can now proceed with importing the remaining deals.',
+                duration: 3000,
+              });
+            },
+          },
+        },
+      );
+      return; // Don't proceed with import
+    }
+
+    setIsImporting(true);
     console.log(`💾 Starting import of ${selectedDealsArray.length} deals...`);
 
     try {
@@ -403,61 +599,76 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {stageDeals.map((deal) => (
-                        <div
-                          key={deal.id}
-                          className={`cursor-pointer rounded-lg border p-4 transition-all hover:shadow-md ${
-                            selectedDeals.has(deal.id)
-                              ? 'border-primary bg-primary/5 shadow-sm'
-                              : 'border-border hover:border-primary/50'
-                          }`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleDealToggle(deal.id);
-                          }}
-                        >
-                          <div className="mb-3 flex items-start justify-between">
-                            <Checkbox
-                              checked={selectedDeals.has(deal.id)}
-                              onCheckedChange={(checked) => {
-                                console.log(
-                                  'Checkbox changed:',
-                                  deal.id,
-                                  checked,
-                                );
-                                handleDealToggle(deal.id);
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                              }}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <h4 className="text-foreground line-clamp-2 font-medium">
-                              {deal.deal_title || 'Untitled Deal'}
-                            </h4>
-                            <div className="text-muted-foreground space-y-1 text-sm">
-                              <div>
-                                <span className="font-medium">Company:</span>{' '}
-                                {deal.company_name || 'Unknown'}
-                              </div>
-                              <div>
-                                <span className="font-medium">Value:</span>{' '}
-                                <span className="text-green-600 dark:text-green-400">
-                                  {formatCurrency(
-                                    deal.value_amount,
-                                    deal.value_currency,
-                                  )}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="font-medium">Close Date:</span>{' '}
-                                {formatDate(deal.close_date)}
+                      {stageDeals.map((deal) => {
+                        const isDuplicate = isDuplicateDeal(deal.id);
+                        return (
+                          <div
+                            key={deal.id}
+                            className={`cursor-pointer rounded-lg border p-4 transition-all hover:shadow-md ${
+                              selectedDeals.has(deal.id)
+                                ? 'border-primary bg-primary/5 shadow-sm'
+                                : isDuplicate
+                                  ? 'border-orange-300 bg-orange-50/50 dark:border-orange-600 dark:bg-orange-900/10'
+                                  : 'border-border hover:border-primary/50'
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleDealToggle(deal.id);
+                            }}
+                          >
+                            <div className="mb-3 flex items-start justify-between">
+                              <Checkbox
+                                checked={selectedDeals.has(deal.id)}
+                                onCheckedChange={(checked) => {
+                                  console.log(
+                                    'Checkbox changed:',
+                                    deal.id,
+                                    checked,
+                                  );
+                                  handleDealToggle(deal.id);
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                              />
+                              {isDuplicate && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-orange-300 bg-orange-100 text-xs text-orange-700 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300"
+                                >
+                                  Duplicate
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <h4 className="text-foreground line-clamp-2 font-medium">
+                                {deal.deal_title || 'Untitled Deal'}
+                              </h4>
+                              <div className="text-muted-foreground space-y-1 text-sm">
+                                <div>
+                                  <span className="font-medium">Company:</span>{' '}
+                                  {deal.company_name || 'Unknown'}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Value:</span>{' '}
+                                  <span className="text-green-600 dark:text-green-400">
+                                    {formatCurrency(
+                                      deal.value_amount,
+                                      deal.value_currency,
+                                    )}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="font-medium">
+                                    Close Date:
+                                  </span>{' '}
+                                  {formatDate(deal.close_date)}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -466,87 +677,102 @@ const DataImportDialog: React.FC<DataImportDialogProps> = ({
           ) : (
             // All deals view - grid layout
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {deals.map((deal) => (
-                <Card
-                  key={deal.id}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    selectedDeals.has(deal.id)
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'hover:border-primary/50'
-                  }`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleDealToggle(deal.id);
-                  }}
-                >
-                  <CardContent className="p-4">
-                    <div className="mb-3 flex items-start justify-between">
-                      <Checkbox
-                        checked={selectedDeals.has(deal.id)}
-                        onCheckedChange={(checked) => {
-                          console.log('Checkbox changed:', deal.id, checked);
-                          handleDealToggle(deal.id);
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                      />
-                      <Badge
-                        variant="secondary"
-                        className={
-                          stageColors[
-                            (deal.stage_name as keyof typeof stageColors) ||
-                              'Lead'
-                          ]
-                        }
-                      >
-                        {deal.stage_name || 'Lead'}
-                      </Badge>
-                    </div>
-
-                    <h4 className="text-foreground mb-3 line-clamp-2 font-medium">
-                      {deal.deal_title || 'Untitled Deal'}
-                    </h4>
-
-                    <div className="text-muted-foreground space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Company:</span>
-                        <span className="text-foreground ml-2 truncate font-medium">
-                          {deal.company_name || 'Unknown'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Value:</span>
-                        <span className="font-medium text-green-600 dark:text-green-400">
-                          {formatCurrency(
-                            deal.value_amount,
-                            deal.value_currency,
+              {deals.map((deal) => {
+                const isDuplicate = isDuplicateDeal(deal.id);
+                return (
+                  <Card
+                    key={deal.id}
+                    className={`cursor-pointer transition-all hover:shadow-md ${
+                      selectedDeals.has(deal.id)
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : isDuplicate
+                          ? 'border-orange-300 bg-orange-50/50 dark:border-orange-600 dark:bg-orange-900/10'
+                          : 'hover:border-primary/50'
+                    }`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleDealToggle(deal.id);
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="mb-3 flex items-start justify-between">
+                        <Checkbox
+                          checked={selectedDeals.has(deal.id)}
+                          onCheckedChange={(checked) => {
+                            console.log('Checkbox changed:', deal.id, checked);
+                            handleDealToggle(deal.id);
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                        />
+                        <div className="flex flex-col items-end space-y-1">
+                          <Badge
+                            variant="secondary"
+                            className={
+                              stageColors[
+                                (deal.stage_name as keyof typeof stageColors) ||
+                                  'Lead'
+                              ]
+                            }
+                          >
+                            {deal.stage_name || 'Lead'}
+                          </Badge>
+                          {isDuplicate && (
+                            <Badge
+                              variant="outline"
+                              className="border-orange-300 bg-orange-100 text-xs text-orange-700 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300"
+                            >
+                              Duplicate
+                            </Badge>
                           )}
-                        </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Close Date:</span>
-                        <span className="text-foreground font-medium">
-                          {formatDate(deal.close_date)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Created:</span>
-                        <span className="text-foreground font-medium">
-                          {formatDate(deal.created_at)}
-                        </span>
-                      </div>
-                    </div>
 
-                    {deal.next_action && (
-                      <p className="text-muted-foreground mt-3 line-clamp-2 text-xs">
-                        <span className="font-medium">Next:</span>{' '}
-                        {deal.next_action}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                      <h4 className="text-foreground mb-3 line-clamp-2 font-medium">
+                        {deal.deal_title || 'Untitled Deal'}
+                      </h4>
+
+                      <div className="text-muted-foreground space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Company:</span>
+                          <span className="text-foreground ml-2 truncate font-medium">
+                            {deal.company_name || 'Unknown'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Value:</span>
+                          <span className="font-medium text-green-600 dark:text-green-400">
+                            {formatCurrency(
+                              deal.value_amount,
+                              deal.value_currency,
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Close Date:</span>
+                          <span className="text-foreground font-medium">
+                            {formatDate(deal.close_date)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Created:</span>
+                          <span className="text-foreground font-medium">
+                            {formatDate(deal.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {deal.next_action && (
+                        <p className="text-muted-foreground mt-3 line-clamp-2 text-xs">
+                          <span className="font-medium">Next:</span>{' '}
+                          {deal.next_action}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

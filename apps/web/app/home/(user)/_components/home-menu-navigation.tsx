@@ -36,10 +36,14 @@ export function HomeMenuNavigation(props: { workspace: UserWorkspace }) {
     return [...acc, item];
   }, []);
 
+  // Find vellora-sales account or use the first team account
+  const targetAccount = accounts.find(account => account.slug === 'vellora-sales') || accounts[0];
+  const dealflowHref = targetAccount ? `/home/${targetAccount.slug}/dealflow` : '/home/vellora-sales/dealflow';
+
   return (
     <div className={'flex w-full flex-1 justify-between'}>
       <div className={'flex items-center space-x-8'}>
-        <AppLogo />
+        <AppLogo href={dealflowHref} />
 
         <BorderedNavigationMenu>
           {routes.map((route) => (

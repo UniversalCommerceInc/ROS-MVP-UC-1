@@ -30,11 +30,13 @@
 
 @layer base {
   html {
-    @apply bg-black;
+    /* Use theme tokens so light/dark/system work */
+    @apply bg-background;
   }
 
   body {
-    @apply bg-black text-white;
+    /* Respect current theme instead of forcing dark */
+    @apply bg-background text-foreground;
     font-feature-settings:
       'rlig' 1,
       'calt' 1;

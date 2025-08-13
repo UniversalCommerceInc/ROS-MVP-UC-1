@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, UserPlus, X } from 'lucide-react';
+import { User, UserPlus, X, ChevronDown } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -9,6 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@kit/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@kit/ui/dropdown-menu';
 import { Button } from '@kit/ui/button';
 import { Badge } from '@kit/ui/badge';
 import { toast } from 'sonner';
@@ -107,21 +113,59 @@ export function DealAssignment({
 
   const currentAssignee = teamMembers.find(member => member.userId === selectedUserId);
 
-  // Badge variant - shows current assignment as a badge
+  // Badge variant - shows current assignment as a clickable badge with dropdown
   if (variant === 'badge') {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         {showLabel && <span className="text-sm text-muted-foreground">Assigned:</span>}
-        {currentAssignee ? (
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <User className="w-3 h-3" />
-            {currentAssignee.name}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <UserPlus className="w-3 h-3" />
-            Unassigned
-          </Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            {currentAssignee ? (
+              <Badge 
+                variant="secondary" 
+                className="flex items-center gap-1 cursor-pointer hover:bg-accent transition-colors"
+              >
+                <User className="w-3 h-3" />
+                {currentAssignee.name}
+                <ChevronDown className="w-3 h-3" />
+              </Badge>
+            ) : (
+              <Badge 
+                variant="outline" 
+                className="flex items-center gap-1 cursor-pointer hover:bg-accent transition-colors border-dashed"
+              >
+                <UserPlus className="w-3 h-3" />
+                <ChevronDown className="w-3 h-3" />
+              </Badge>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem
+              onClick={() => handleAssignDeal(null)}
+              disabled={assigning}
+              className="flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Unassigned</span>
+            </DropdownMenuItem>
+            {teamMembers.map((member) => (
+              <DropdownMenuItem
+                key={member.userId}
+                onClick={() => handleAssignDeal(member.userId)}
+                disabled={assigning}
+                className="flex items-center gap-2"
+              >
+                <User className="w-4 h-4" />
+                <div className="flex flex-col">
+                  <span className="font-medium">{member.name}</span>
+                  <span className="text-xs text-muted-foreground">{member.email}</span>
+                </div>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {assigning && (
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
         )}
       </div>
     );

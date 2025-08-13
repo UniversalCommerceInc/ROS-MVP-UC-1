@@ -5,23 +5,33 @@ import { getSupabaseServerClient } from '@kit/supabase/server-client';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const { userId, accountId } = await request.json();
 
-    console.log('🔍 Fetching Zoho data for user:', userId);
+    // console.log('🔍 Fetching Zoho data for user:', userId);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 },
-      );
-    }
+    // if (!userId) {
+    //   return NextResponse.json(
+    //     { error: 'User ID is required' },
+    //     { status: 400 },
+    //   );
+    // }
 
     const supabase = getSupabaseServerClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { data: tokenData, error } = await supabase
       .from('zoho_tokens')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
+      .eq('account_id', accountId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -35,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!tokenData) {
-      console.error('❌ No stored tokens found for user:', userId);
+      console.error('❌ No stored tokens found for user:', user.id);
       return NextResponse.json(
         {
           error: 'No Zoho connection found. Please reconnect your account.',

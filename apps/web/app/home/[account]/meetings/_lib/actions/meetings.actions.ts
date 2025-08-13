@@ -9,6 +9,7 @@ export async function getMeetings(accountId: string) {
     console.log(`🔍 Fetching meetings for account: ${accountId}`);
 
     // Fetch all meetings with enhanced data including summaries and highlights
+    // Add DISTINCT ON to prevent duplicates based on combination of fields
     const { data: meetings, error } = await supabase
       .from('meetings')
       .select(
@@ -240,7 +241,26 @@ export async function getMeetings(accountId: string) {
       transformedMeetings[0] || 'None',
     );
 
-    return transformedMeetings;
+    // Client-side deduplication to prevent duplicate meetings
+    // Remove duplicates based on title, start_time, and participant_emails
+    const deduplicatedMeetings = transformedMeetings.filter((meeting, index, array) => {
+      return index === array.findIndex(m => 
+        m.title === meeting.title &&
+        m.start_time === meeting.start_time &&
+        JSON.stringify(m.participant_emails?.sort()) === JSON.stringify(meeting.participant_emails?.sort())
+      );
+    });
+
+    const duplicatesRemoved = transformedMeetings.length - deduplicatedMeetings.length;
+    if (duplicatesRemoved > 0) {
+      console.log(`🧹 Removed ${duplicatesRemoved} duplicate meetings`);
+    }
+
+    console.log(
+      `✅ Final result: ${deduplicatedMeetings.length} unique meetings after deduplication`,
+    );
+
+    return deduplicatedMeetings;
   } catch (error) {
     console.error('Error in getMeetings:', error);
     throw error;

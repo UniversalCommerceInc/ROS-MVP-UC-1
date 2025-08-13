@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from '@kit/supabase/server-client';
 
 import {
   GmailAccountsResponse,
+  GmailEmail,
   GmailEmailsResponse,
   SendEmailResponse,
   SyncResponse,
@@ -260,9 +261,18 @@ export async function getGmailEmails(
       };
     }
 
+    // Convert emails to proper GmailEmail format, handling null values
+    const typedEmails = (data || []).map(email => ({
+      ...email,
+      to_email: email.to_email || [],
+      cc_email: email.cc_email || [],
+      bcc_email: email.bcc_email || [],
+      labels: email.labels || []
+    })) as GmailEmail[];
+
     return {
       success: true,
-      emails: data,
+      emails: typedEmails,
       total: count || 0,
     };
   } catch (error) {
@@ -288,84 +298,160 @@ export async function getDealRelatedEmails(
   try {
     const supabase = getSupabaseServerClient();
 
-    // Get all emails for this account directly from emails table
-    const { data: allEmails, error: allEmailsError } = await supabase
-      .from('emails')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('received_at', { ascending: false });
+    // Calculate 6 weeks ago for performance filtering
+    const sixWeeksAgo = new Date();
+    sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 42); // 6 weeks = 42 days
+    const sixWeeksAgoISO = sixWeeksAgo.toISOString();
 
-    // Get deal contacts data
-    const { data: dealContactsData, error: contactError } = await supabase
+    console.log('🕐 Filtering emails from the last 6 weeks:', {
+      cutoffDate: sixWeeksAgoISO,
+      accountId
+    });
+
+    // Get all relevant business contact emails efficiently
+    const businessEmails = new Set<string>();
+
+    // 1. Get emails from deal contacts (recent deals only)
+    const { data: dealContactsData } = await supabase
       .from('deal_contacts')
-      .select(
-        `
-        deal_id,
-        name,
-        email,
-        role,
-        is_primary
-      `,
-      )
-      .not('email', 'is', null);
+      .select('email, deals!inner(created_at)')
+      .not('email', 'is', null)
+      .gte('deals.created_at', sixWeeksAgoISO);
 
-    // Get contacts data
-    const { data: contacts, error: contactsError } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('account_id', accountId);
-
-    // Extract all contact emails from deal_contacts
-    const contactEmails =
-      dealContactsData?.map((dc) => dc.email).filter(Boolean) || [];
-
-    // Also get emails from the contacts table
-    const additionalContactEmails =
-      contacts?.map((contact) => contact.email) || [];
-
-    // Combine both email sources
-    const allContactEmails = [
-      ...new Set([...contactEmails, ...additionalContactEmails]),
-    ];
-
-    // If we have no deal contacts yet, return all account emails
-    if (allContactEmails.length === 0) {
-      console.log(
-        '⚠️ No deal contacts found, returning all emails for account',
-      );
-      const { data: accountEmails, error: accountEmailsError } = await supabase
-        .from('emails')
-        .select('*')
-        .eq('account_id', accountId)
-        .order('received_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      console.log('📬 Returning all account emails:', {
-        count: accountEmails?.length || 0,
-        total: allEmails?.length || 0,
-        error: accountEmailsError?.message || null,
+    if (dealContactsData) {
+      dealContactsData.forEach(contact => {
+        if (contact.email) {
+          businessEmails.add(contact.email.toLowerCase());
+        }
       });
+    }
 
+    // 2. Get emails from recent meeting participants
+    const { data: meetingsData } = await supabase
+      .from('meetings')
+      .select('participant_emails')
+      .eq('account_id', accountId)
+      .gte('created_at', sixWeeksAgoISO)
+      .not('participant_emails', 'is', null);
+
+    if (meetingsData) {
+      meetingsData.forEach(meeting => {
+        if (meeting.participant_emails && Array.isArray(meeting.participant_emails)) {
+          meeting.participant_emails.forEach(email => {
+            if (email) {
+              businessEmails.add(email.toLowerCase());
+            }
+          });
+        }
+      });
+    }
+
+    // 3. Get emails from recent scheduled meeting attendees
+    const { data: scheduledMeetingsData } = await supabase
+      .from('scheduled_meetings')
+      .select('attendees')
+      .eq('account_id', accountId)
+      .gte('created_at', sixWeeksAgoISO)
+      .not('attendees', 'is', null);
+
+    if (scheduledMeetingsData) {
+      scheduledMeetingsData.forEach(meeting => {
+        if (meeting.attendees && Array.isArray(meeting.attendees)) {
+          meeting.attendees.forEach((attendee: any) => {
+            if (attendee && attendee.email) {
+              businessEmails.add(attendee.email.toLowerCase());
+            }
+          });
+        }
+      });
+    }
+
+    // 4. Get emails from recent calendar event attendees  
+    const { data: calendarEventsData } = await supabase
+      .from('calendar_events')
+      .select('attendees, organizer_email')
+      .eq('account_id', accountId)
+      .gte('created_at', sixWeeksAgoISO)
+      .not('attendees', 'is', null);
+
+    if (calendarEventsData) {
+      calendarEventsData.forEach(event => {
+        // Add organizer email
+        if (event.organizer_email) {
+          businessEmails.add(event.organizer_email.toLowerCase());
+        }
+        
+        // Add attendee emails
+        if (event.attendees && Array.isArray(event.attendees)) {
+          event.attendees.forEach((attendee: any) => {
+            if (attendee && attendee.email) {
+              businessEmails.add(attendee.email.toLowerCase());
+            }
+          });
+        }
+      });
+    }
+
+    console.log('🎯 Business emails found (last 6 weeks):', {
+      totalBusinessEmails: businessEmails.size,
+      sources: {
+        dealContacts: dealContactsData?.length || 0,
+        meetings: meetingsData?.length || 0,
+        scheduledMeetings: scheduledMeetingsData?.length || 0,
+        calendarEvents: calendarEventsData?.length || 0,
+      }
+    });
+
+    // If no business contacts found, return empty results with guidance
+    if (businessEmails.size === 0) {
+      console.log('📭 No business contacts found - returning empty email list');
       return {
         success: true,
-        emails: accountEmails || [],
-        total: allEmails?.length || 0,
+        emails: [],
+        total: 0,
+        debug: {
+          message: 'No business contacts found. Add contacts to deals or schedule meetings to see relevant emails.'
+        }
       };
     }
 
-    // Build the query for deal-related emails
+    // Build optimized email query with date filter
     let emailQuery = supabase
       .from('emails')
       .select('*')
-      .eq('account_id', accountId);
+      .eq('account_id', accountId)
+      .gte('received_at', sixWeeksAgoISO); // Only get emails from last 6 weeks
 
-    // Filter by contact emails (from_email OR any email in to_email)
-    const emailFilters = allContactEmails
-      .map((email) => `from_email.eq.${email},to_email.cs.{"${email}"}`)
+    // Convert business emails to an array for the query
+    const businessEmailsArray = Array.from(businessEmails);
+    
+    // Filter emails that are from OR to any business contact
+    const emailFilters = businessEmailsArray
+      .map(email => `from_email.eq.${email},to_email.cs.{"${email}"}`)
       .join(',');
 
     if (emailFilters) {
       emailQuery = emailQuery.or(emailFilters);
+    }
+
+    // Filter by specific deal if provided
+    if (dealId) {
+      const { data: dealContacts } = await supabase
+        .from('deal_contacts')
+        .select('email')
+        .eq('deal_id', dealId)
+        .not('email', 'is', null);
+
+      if (dealContacts && dealContacts.length > 0) {
+        const dealEmailsArray = dealContacts.map(dc => dc.email).filter(Boolean);
+        const dealEmailFilters = dealEmailsArray
+          .map(email => `from_email.eq.${email},to_email.cs.{"${email}"}`)
+          .join(',');
+        
+        if (dealEmailFilters) {
+          emailQuery = emailQuery.or(dealEmailFilters);
+        }
+      }
     }
 
     // Add search functionality
@@ -376,20 +462,41 @@ export async function getDealRelatedEmails(
     }
 
     // Apply sorting and pagination
-    const { data: dealEmails, error: dealEmailsError } = await emailQuery
+    const { data: filteredEmails, error: emailsError } = await emailQuery
       .order('received_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    console.log('🎯 Deal-related emails found:', {
-      count: dealEmails?.length || 0,
-      error: dealEmailsError?.message || null,
-      contactEmails: allContactEmails,
+    if (emailsError) {
+      console.error('❌ Error fetching filtered emails:', emailsError);
+      return {
+        success: false,
+        error: 'Failed to fetch emails',
+        emails: [],
+        total: 0,
+      };
+    }
+
+    console.log('📧 Filtered emails result (last 6 weeks):', {
+      found: filteredEmails?.length || 0,
+      businessContactsCount: businessEmails.size,
+      dateRange: `${sixWeeksAgoISO} to now`,
+      offset,
+      limit
     });
+
+    // Convert emails to proper GmailEmail format, handling null to_email
+    const typedEmails = (filteredEmails || []).map(email => ({
+      ...email,
+      to_email: email.to_email || [],
+      cc_email: email.cc_email || [],
+      bcc_email: email.bcc_email || [],
+      labels: email.labels || []
+    })) as GmailEmail[];
 
     return {
       success: true,
-      emails: dealEmails || [],
-      total: dealEmails?.length || 0,
+      emails: typedEmails,
+      total: typedEmails.length,
     };
   } catch (error) {
     console.error('❌ Error in getDealRelatedEmails:', error);
@@ -401,275 +508,3 @@ export async function getDealRelatedEmails(
     };
   }
 }
-// export async function getDealRelatedEmails(
-//   accountId: string,
-//   options: {
-//     limit?: number;
-//     offset?: number;
-//     dealId?: string;
-//     search?: string;
-//   } = {},
-// ): Promise<GmailEmailsResponse> {
-//   const { limit = 20, offset = 0, dealId, search } = options;
-
-//   try {
-//     const supabase = getSupabaseServerClient();
-
-//     // Get all emails for this account directly from emails table
-//     const { data: allEmails, error: allEmailsError } = await supabase
-//       .from('emails')
-//       .select('*')
-//       .eq('account_id', accountId)
-//       .order('received_at', { ascending: false });
-
-//     // Get deal contacts data
-//     const { data: dealContactsData, error: contactError } = await supabase
-//       .from('deal_contacts')
-//       .select(
-//         `
-//         deal_id,
-//         name,
-//         email,
-//         role,
-//         is_primary,
-//         is_decision_maker
-//       `,
-//       )
-//       .not('email', 'is', null);
-
-//     // Get deals data
-//     const { data: dealsData, error: dealsError } = await supabase
-//       .from('deals')
-//       .select('id, company_name, stage, value_amount, value_currency')
-//       .eq('account_id', accountId);
-
-//     // Get contacts data
-//     const { data: contacts, error: contactsError } = await supabase
-//       .from('contacts')
-//       .select('*')
-//       .eq('account_id', accountId);
-
-//     console.log('📊 Data fetched:', {
-//       allEmails: allEmails?.length || 0,
-//       dealContacts: dealContactsData?.length || 0,
-//       deals: dealsData?.length || 0,
-//       contacts: contacts?.length || 0,
-//     });
-
-//     // FILTER OUT ORPHANED DEAL CONTACTS - Only keep contacts that have valid deals
-//     const validDealIds = new Set(dealsData?.map((d) => d.id) || []);
-//     const validDealContacts =
-//       dealContactsData?.filter((dc) => validDealIds.has(dc.deal_id)) || [];
-
-//     console.log('🧹 Filtered orphaned contacts:', {
-//       original: dealContactsData?.length || 0,
-//       valid: validDealContacts.length,
-//       orphaned: (dealContactsData?.length || 0) - validDealContacts.length,
-//     });
-
-//     // Extract all contact emails from valid deal_contacts only
-//     const contactEmails = validDealContacts
-//       .map((dc) => dc.email)
-//       .filter(Boolean);
-
-//     // Also get emails from the contacts table
-//     const additionalContactEmails =
-//       contacts?.map((contact) => contact.email) || [];
-
-//     // Combine both email sources
-//     const allContactEmails = [
-//       ...new Set([...contactEmails, ...additionalContactEmails]),
-//     ];
-
-//     console.log('📧 Contact emails found:', allContactEmails);
-
-//     // If we have no deal contacts yet, return all account emails
-//     if (allContactEmails.length === 0) {
-//       console.log(
-//         '⚠️ No deal contacts found, returning all emails for account',
-//       );
-//       const { data: accountEmails, error: accountEmailsError } = await supabase
-//         .from('emails')
-//         .select('*')
-//         .eq('account_id', accountId)
-//         .order('received_at', { ascending: false })
-//         .range(offset, offset + limit - 1);
-
-//       console.log('📬 Returning all account emails:', {
-//         count: accountEmails?.length || 0,
-//         total: allEmails?.length || 0,
-//         error: accountEmailsError?.message || null,
-//       });
-
-//       return {
-//         success: true,
-//         emails: accountEmails || [],
-//         total: allEmails?.length || 0,
-//       };
-//     }
-
-//     // Build the query for deal-related emails
-//     let emailQuery = supabase
-//       .from('emails')
-//       .select('*')
-//       .eq('account_id', accountId);
-
-//     // Filter by specific deal if provided
-//     if (dealId) {
-//       // Get contacts for this specific deal (only valid ones)
-//       const dealSpecificContacts = validDealContacts
-//         .filter((dc) => dc.deal_id === dealId)
-//         .map((dc) => dc.email)
-//         .filter(Boolean);
-
-//       if (dealSpecificContacts.length > 0) {
-//         const dealEmailFilters = dealSpecificContacts
-//           .map((email) => `from_email.eq.${email},to_email.cs.{"${email}"}`)
-//           .join(',');
-
-//         if (dealEmailFilters) {
-//           emailQuery = emailQuery.or(dealEmailFilters);
-//         }
-//       }
-//     } else {
-//       // Filter by contact emails (from_email OR any email in to_email)
-//       const emailFilters = allContactEmails
-//         .map((email) => `from_email.eq.${email},to_email.cs.{"${email}"}`)
-//         .join(',');
-
-//       if (emailFilters) {
-//         emailQuery = emailQuery.or(emailFilters);
-//       }
-//     }
-
-//     // Add search functionality
-//     if (search) {
-//       emailQuery = emailQuery.or(
-//         `subject.ilike.%${search}%,body_text.ilike.%${search}%`,
-//       );
-//     }
-
-//     // Apply sorting and pagination
-//     const { data: dealEmails, error: dealEmailsError } = await emailQuery
-//       .order('received_at', { ascending: false })
-//       .range(offset, offset + limit - 1);
-
-//     console.log('🎯 Deal-related emails found:', {
-//       count: dealEmails?.length || 0,
-//       error: dealEmailsError?.message || null,
-//     });
-
-//     // ADD DEAL CONTEXT TO EACH EMAIL - USING ONLY VALID DEAL CONTACTS
-//     const emailsWithContext =
-//       dealEmails?.map((email, emailIndex) => {
-//         const dealContext = [];
-
-//         // Get all unique email addresses involved in this email (from + to)
-//         let toEmailArray = [];
-
-//         if (email.to_email) {
-//           if (Array.isArray(email.to_email)) {
-//             toEmailArray = email.to_email;
-//           } else if (typeof email.to_email === 'string') {
-//             // Try to parse if it looks like JSON array
-//             if (email.to_email.startsWith('[')) {
-//               try {
-//                 toEmailArray = JSON.parse(email.to_email);
-//               } catch (e) {
-//                 toEmailArray = [email.to_email];
-//               }
-//             } else {
-//               toEmailArray = [email.to_email];
-//             }
-//           } else {
-//             toEmailArray = [email.to_email];
-//           }
-//         }
-
-//         const emailAddresses = [email.from_email, ...toEmailArray].filter(
-//           Boolean,
-//         );
-
-//         console.log(
-//           `\n🔍 [${emailIndex + 1}] Processing email: ${email.subject || 'No subject'}`,
-//         );
-
-//         // For each email address, find ALL matching VALID deal contacts
-//         for (const emailAddress of emailAddresses) {
-//           const contactMatches = validDealContacts.filter(
-//             (dc) => dc.email === emailAddress,
-//           );
-
-//           console.log(
-//             `👤 Found ${contactMatches.length} VALID contacts for ${emailAddress}:`,
-//             contactMatches.map((c) => ({
-//               deal_id: c.deal_id,
-//               name: c.name,
-//               email: c.email,
-//             })),
-//           );
-
-//           // For each matching contact, add their deal context
-//           for (const contact of contactMatches) {
-//             const deal = dealsData?.find((d) => d.id === contact.deal_id);
-
-//             if (deal) {
-//               // Check if we already have this deal in the context to avoid duplicates
-//               const existingDealContext = dealContext.find(
-//                 (ctx) => ctx.deal.id === deal.id,
-//               );
-
-//               if (!existingDealContext) {
-//                 console.log(`🏢 ✅ ADDING deal context: ${deal.company_name}`);
-//                 dealContext.push({
-//                   contact: {
-//                     id: contact.deal_id,
-//                     name: contact.name,
-//                     email: contact.email,
-//                     role: contact.role || '',
-//                     is_decision_maker: contact.is_decision_maker || false,
-//                   },
-//                   deal: {
-//                     id: deal.id,
-//                     company_name: deal.company_name,
-//                     stage: deal.stage,
-//                     value: `${deal.value_amount || 0} ${deal.value_currency || 'USD'}`,
-//                   },
-//                 });
-//               } else {
-//                 console.log(
-//                   `🔄 Deal ${deal.company_name} already in context, skipping`,
-//                 );
-//               }
-//             }
-//           }
-//         }
-
-//         console.log(
-//           `🎯 Final deal context for email "${email.subject}":`,
-//           dealContext.length,
-//           'deals -',
-//           dealContext.map((ctx) => ctx.deal.company_name),
-//         );
-
-//         return {
-//           ...email,
-//           dealContext: dealContext.length > 0 ? dealContext : undefined,
-//         };
-//       }) || [];
-
-//     return {
-//       success: true,
-//       emails: emailsWithContext,
-//       total: emailsWithContext.length,
-//     };
-//   } catch (error) {
-//     console.error('❌ Error in getDealRelatedEmails:', error);
-//     return {
-//       success: false,
-//       error: 'Internal server error',
-//       emails: [],
-//       total: 0,
-//     };
-//   }
-// }

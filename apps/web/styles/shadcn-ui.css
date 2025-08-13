@@ -13,34 +13,34 @@
       sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
     --font-heading: var(--font-sans);
 
-    /* Force all backgrounds to pure black */
-    --background: #000000;
-    --foreground: #ffffff;
+    /* Light theme colors - Professional & Modern */
+    --background: #ffffff;
+    --foreground: #0f172a;
 
-    --card: #000000;
-    --card-foreground: #ffffff;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
 
-    --popover: #000000;
-    --popover-foreground: #ffffff;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
 
-    --primary: #ffffff;
-    --primary-foreground: #000000;
+    --primary: #2563eb;
+    --primary-foreground: #ffffff;
 
-    --secondary: #1a1a1a;
-    --secondary-foreground: #ffffff;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #0f172a;
 
-    --muted: #1a1a1a;
-    --muted-foreground: #a3a3a3;
+    --muted: #f8fafc;
+    --muted-foreground: #64748b;
 
-    --accent: #1a1a1a;
-    --accent-foreground: #ffffff;
+    --accent: #f1f5f9;
+    --accent-foreground: #0f172a;
 
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
 
-    --border: #333333;
-    --input: #1a1a1a;
-    --ring: #ffffff;
+    --border: #e2e8f0;
+    --input: #f1f5f9;
+    --ring: #2563eb;
 
     --radius: 0.5rem;
 
@@ -55,46 +55,46 @@
     --designer-blue: 210 100% 50%;
     --designer-silver: 0 0% 80%;
 
-    /* Force sidebar backgrounds to black too */
-    --sidebar-background: #000000;
-    --sidebar-foreground: #ffffff;
-    --sidebar-primary: #ffffff;
-    --sidebar-primary-foreground: #000000;
-    --sidebar-accent: #1a1a1a;
-    --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: #333333;
-    --sidebar-ring: #ffffff;
+    /* Light theme sidebar colors */
+    --sidebar-background: #f8fafc;
+    --sidebar-foreground: #0f172a;
+    --sidebar-primary: #2563eb;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #f1f5f9;
+    --sidebar-accent-foreground: #0f172a;
+    --sidebar-border: #e2e8f0;
+    --sidebar-ring: #2563eb;
   }
 
   .dark {
-    /* In dark mode, also force everything to pure black */
-    --background: #000000;
-    --foreground: #ffffff;
+    /* Dark mode - Softer, modern dark theme */
+    --background: #0a0a0a;
+    --foreground: #fafafa;
 
-    --card: #000000;
-    --card-foreground: #ffffff;
+    --card: #171717;
+    --card-foreground: #fafafa;
 
-    --popover: #000000;
-    --popover-foreground: #ffffff;
+    --popover: #171717;
+    --popover-foreground: #fafafa;
 
-    --primary: #ffffff;
-    --primary-foreground: #000000;
+    --primary: #818cf8;
+    --primary-foreground: #030712;
 
-    --secondary: #1a1a1a;
-    --secondary-foreground: #ffffff;
+    --secondary: #262626;
+    --secondary-foreground: #fafafa;
 
-    --muted: #1a1a1a;
-    --muted-foreground: #a3a3a3;
+    --muted: #262626;
+    --muted-foreground: #a1a1aa;
 
-    --accent: #1a1a1a;
-    --accent-foreground: #ffffff;
+    --accent: #312e81;
+    --accent-foreground: #c7d2fe;
 
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
+    --destructive: #dc2626;
+    --destructive-foreground: #fafafa;
 
-    --border: #333333;
-    --input: #1a1a1a;
-    --ring: #ffffff;
+    --border: #262626;
+    --input: #262626;
+    --ring: #818cf8;
 
     --chart-1: #3b82f6;
     --chart-2: #10b981;
@@ -107,13 +107,13 @@
     --designer-blue: 210 100% 50%;
     --designer-silver: 0 0% 80%;
 
-    --sidebar-background: #000000;
-    --sidebar-foreground: #ffffff;
-    --sidebar-primary: #ffffff;
-    --sidebar-primary-foreground: #000000;
-    --sidebar-accent: #1a1a1a;
-    --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: #333333;
-    --sidebar-ring: #ffffff;
+    --sidebar-background: #0f0f0f;
+    --sidebar-foreground: #fafafa;
+    --sidebar-primary: #818cf8;
+    --sidebar-primary-foreground: #030712;
+    --sidebar-accent: #312e81;
+    --sidebar-accent-foreground: #c7d2fe;
+    --sidebar-border: #262626;
+    --sidebar-ring: #818cf8;
   }
 }

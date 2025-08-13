@@ -309,14 +309,25 @@ export async function PATCH(
 
     console.log(`✅ Deal updated: ${transformedDeal.companyName}`);
 
+    // Debug sync conditions
+    console.log('🔍 Sync conditions:', {
+      deal_id: deal.deal_id,
+      source: deal.source,
+      shouldSync: !!(deal.deal_id && deal.source)
+    });
+
     if (deal.deal_id && deal.source) {
       try {
-        console.log(`🔄 Syncing ${deal.source} deal...`);
+        console.log(`🔄 Syncing ${deal.source} deal with ID: ${deal.deal_id}...`);
 
         if (deal.source === 'hubspot') {
           const syncResult = await updateHubSpotDeal(deal, accountId, supabase);
           if (!syncResult.success && !syncResult.skipped) {
             console.error('❌ HubSpot sync failed:', syncResult.error);
+          } else if (syncResult.success) {
+            console.log('✅ HubSpot sync completed successfully');
+          } else if (syncResult.skipped) {
+            console.log('⏭️ HubSpot sync skipped');
           }
         } else if (deal.source === 'salesforce') {
           const syncResult = await updateSalesforceDeal(
@@ -326,6 +337,8 @@ export async function PATCH(
           );
           if (!syncResult.success && !syncResult.skipped) {
             console.error('❌ Salesforce sync failed:', syncResult.error);
+          } else if (syncResult.success) {
+            console.log('✅ Salesforce sync completed successfully');
           }
         }
       } catch (syncError) {
@@ -335,6 +348,14 @@ export async function PATCH(
           syncError,
         );
       }
+    } else {
+      console.log('⏭️ Skipping sync: No deal_id or source found');
+      console.log('📋 Deal data for sync check:', {
+        id: deal.id,
+        deal_id: deal.deal_id,
+        source: deal.source,
+        company_name: deal.company_name
+      });
     }
 
     // Trigger momentum scoring in the background (don't wait for it)
@@ -359,6 +380,29 @@ export async function PATCH(
         transformedDeal.companyName,
       );
       console.log('🎯 Using URL:', `${baseUrl}/api/momentum-scoring`);
+    }
+
+    // Trigger comprehensive analysis for the updated deal
+    try {
+      console.log('🔍 Triggering comprehensive analysis for updated deal...');
+      
+      // Import the DealAnalysisService dynamically
+      const { DealAnalysisService } = await import('~/lib/services/dealAnalysisService');
+      
+      // Trigger analysis in background (don't await to avoid blocking response)
+      DealAnalysisService.analyzeDeal(dealId, accountId, {
+        includeCompanyAnalysis: false, // Skip company analysis on updates unless needed
+        includeEmailAnalysis: true,    // Update email context
+        includeMeetingAnalysis: true,  // Update meeting context
+        includeMomentumUpdate: true,   // Update momentum
+        trigger: 'update'
+      }).catch(error => {
+        console.error('❌ Background analysis failed for updated deal:', error);
+      });
+      
+    } catch (analysisError) {
+      console.error('❌ Failed to trigger deal analysis:', analysisError);
+      // Don't fail the deal update if analysis fails
     }
 
     return NextResponse.json(transformedDeal);

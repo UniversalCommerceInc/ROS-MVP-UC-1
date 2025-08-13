@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@kit/ui/select';
+import { Switch } from '@kit/ui/switch';
 import { Textarea } from '@kit/ui/textarea';
 import { cn } from '@kit/ui/utils';
 
@@ -75,8 +76,10 @@ interface Contact {
   email: string;
   phone?: string;
   isDecisionMaker?: boolean;
+  isPrimary?: boolean;
   lastContacted?: string;
   avatarUrl?: string;
+  contactRoleType?: 'technical' | 'financial' | 'executive' | 'other';
 }
 
 interface Activity {
@@ -169,6 +172,7 @@ interface Deal {
 interface EnhancedDealDetailProps {
   deal: Deal | null;
   accountId: string;
+  accountSlug: string;
   isOpen: boolean;
   onClose: () => void;
   onUpdate?: (deal: Deal) => void;
@@ -314,9 +318,58 @@ const TeamsIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
   </svg>
 );
 
+/**
+ * Determines if a next step should show the "Execute with AI" button
+ * Only show for:
+ * 1. Follow up email steps
+ * 2. Meeting invite steps
+ * 3. The first next step if it's about scheduling a meeting
+ */
+function shouldShowExecuteWithAI(
+  step: string,
+  index: number,
+  allSteps: string[],
+): boolean {
+  const stepLower = step.toLowerCase();
+
+  // Check if this is the first step and it's about scheduling a meeting
+  const isFirstStep = index === 0;
+  const isSchedulingStep =
+    (stepLower.includes('schedule') && stepLower.includes('meeting')) ||
+    (stepLower.includes('schedule') && stepLower.includes('call')) ||
+    (stepLower.includes('book') && stepLower.includes('meeting')) ||
+    (stepLower.includes('set up') && stepLower.includes('meeting')) ||
+    stepLower.includes('schedule a meeting');
+
+  // Check if this is about drafting a follow up email
+  const isFollowUpEmail =
+    (stepLower.includes('follow up') && stepLower.includes('email')) ||
+    (stepLower.includes('follow-up') && stepLower.includes('email')) ||
+    (stepLower.includes('send') && stepLower.includes('follow up')) ||
+    (stepLower.includes('send') && stepLower.includes('follow-up')) ||
+    (stepLower.includes('draft') && stepLower.includes('email')) ||
+    (stepLower.includes('email') && stepLower.includes('follow'));
+
+  // Check if this is about sending a meeting invite
+  const isMeetingInvite =
+    (stepLower.includes('meeting') && stepLower.includes('invite')) ||
+    (stepLower.includes('send') && stepLower.includes('calendar')) ||
+    (stepLower.includes('send') && stepLower.includes('meeting')) ||
+    (stepLower.includes('calendar') && stepLower.includes('invite'));
+
+  // Only show Execute with AI for:
+  // 1. First step if it's about scheduling
+  // 2. Follow up email steps
+  // 3. Meeting invite steps
+  return (
+    (isFirstStep && isSchedulingStep) || isFollowUpEmail || isMeetingInvite
+  );
+}
+
 export default function EnhancedDealDetail({
   deal,
   accountId,
+  accountSlug,
   isOpen,
   onClose,
   onUpdate,
@@ -436,7 +489,18 @@ export default function EnhancedDealDetail({
     email: string;
     phone: string;
     role: string;
-  }>({ name: '', email: '', phone: '', role: '' });
+    isDecisionMaker: boolean;
+    isPrimary: boolean;
+    contactRoleType: 'technical' | 'financial' | 'executive' | 'other';
+  }>({
+    name: '',
+    email: '',
+    phone: '',
+    role: '',
+    isDecisionMaker: false,
+    isPrimary: false,
+    contactRoleType: 'other',
+  });
   const [newContactData, setNewContactData] = useState<{
     name: string;
     email: string;
@@ -1532,10 +1596,14 @@ I encountered an error while trying to add ${
   };
 
   const startEditingDescription = () => {
-    setEditingDescription(
+    // Load the current description being displayed
+    const currentDescription =
+      (enhancedDeal as any).companyDescription ||
       enhancedDeal.dealTitle ||
-        `${enhancedDeal.companyName} is looking to overhaul their internal CRM and project management tools. They need a solution that integrates seamlessly with their existing accounting software and provides robust reporting capabilities. The primary decision maker is John Smith, VP of Operations, but the CTO, Sarah Connor, will have significant input on technical feasibility.`,
-    );
+      enhancedDeal.relationshipInsights ||
+      '';
+
+    setEditingDescription(currentDescription);
     setIsEditingDescription(true);
   };
 
@@ -1561,13 +1629,15 @@ I encountered an error while trying to add ${
         const updatedDeal = await response.json();
         console.log('✅ Description updated successfully');
 
-        // Update parent state
+        // Update parent state with the correct field mapping
         if (onUpdate) {
           onUpdate({
             ...deal,
-            dealTitle: editingDescription,
+            relationshipInsights: editingDescription, // This maps to description in the API
           });
         }
+
+        // The enhanced deal will update automatically via useMemo when the parent state changes
 
         setIsEditingDescription(false);
         toast.success('Description updated successfully');
@@ -2358,6 +2428,9 @@ I encountered an error while trying to add ${
       email: contact.email || '',
       phone: contact.phone || '',
       role: contact.role || '',
+      isDecisionMaker: contact.isDecisionMaker || false,
+      isPrimary: contact.isPrimary || false,
+      contactRoleType: contact.contactRoleType || 'other',
     });
   };
 
@@ -2399,7 +2472,15 @@ I encountered an error while trying to add ${
 
   const cancelEditingContact = () => {
     setEditingContact(null);
-    setEditingContactData({ name: '', email: '', phone: '', role: '' });
+    setEditingContactData({
+      name: '',
+      email: '',
+      phone: '',
+      role: '',
+      isDecisionMaker: false,
+      isPrimary: false,
+      contactRoleType: 'other',
+    });
   };
 
   const deleteContact = async (contactId: string) => {
@@ -2821,7 +2902,7 @@ I encountered an error while trying to add ${
             <DealAssignment
               dealId={deal?.id || ''}
               currentAssignedTo={deal?.assignedTo}
-              accountSlug={accountId} // Note: this might need to be converted from ID to slug
+              accountSlug={accountSlug}
               variant="badge"
               showLabel={false}
               className="ml-2"
@@ -3233,10 +3314,12 @@ I encountered an error while trying to add ${
                                 </div>
                                 <div className="flex-1">
                                   <p className="text-sm text-white">{step}</p>
-                                  {/* Only show Execute with AI button for actionable steps, not informational meeting steps */}
-                                  {!step
-                                    .toLowerCase()
-                                    .startsWith('meeting with') && (
+                                  {/* Only show Execute with AI button for follow up emails, meeting invites, and scheduling steps */}
+                                  {shouldShowExecuteWithAI(
+                                    step,
+                                    index,
+                                    localNextSteps,
+                                  ) && (
                                     <div className="mt-1 flex gap-2">
                                       <Button
                                         variant="ghost"
@@ -3244,8 +3327,9 @@ I encountered an error while trying to add ${
                                         className="h-6 px-2 text-xs text-green-400 hover:bg-green-400/10 hover:text-green-300"
                                         disabled={deletingNextStep === index}
                                         onClick={async () => {
-                                          // Check if this is a meeting scheduling step
                                           const stepLower = step.toLowerCase();
+
+                                          // Check if this is a meeting scheduling step
                                           const isSchedulingStep =
                                             (stepLower.includes('schedule') &&
                                               stepLower.includes('meeting')) ||
@@ -3258,18 +3342,63 @@ I encountered an error while trying to add ${
                                             stepLower.includes(
                                               'schedule a meeting',
                                             );
+
+                                          // Check if this is about drafting a follow up email
+                                          const isFollowUpEmail =
+                                            (stepLower.includes('follow up') &&
+                                              stepLower.includes('email')) ||
+                                            (stepLower.includes('follow-up') &&
+                                              stepLower.includes('email')) ||
+                                            (stepLower.includes('send') &&
+                                              stepLower.includes(
+                                                'follow up',
+                                              )) ||
+                                            (stepLower.includes('send') &&
+                                              stepLower.includes(
+                                                'follow-up',
+                                              )) ||
+                                            (stepLower.includes('draft') &&
+                                              stepLower.includes('email')) ||
+                                            (stepLower.includes('email') &&
+                                              stepLower.includes('follow'));
+
+                                          // Check if this is about sending a meeting invite
+                                          const isMeetingInvite =
+                                            (stepLower.includes('meeting') &&
+                                              stepLower.includes('invite')) ||
+                                            (stepLower.includes('send') &&
+                                              stepLower.includes('calendar')) ||
+                                            (stepLower.includes('send') &&
+                                              stepLower.includes('meeting')) ||
+                                            (stepLower.includes('calendar') &&
+                                              stepLower.includes('invite'));
+
                                           if (isSchedulingStep) {
                                             console.log(
                                               '🗓️ Triggering AI meeting scheduling workflow',
                                             );
-
-                                            // Use AI assistant to help with scheduling instead of manual calendar
                                             const schedulingMessage = `Help me schedule a meeting with ${deal?.companyName}`;
                                             await sendMessageWithText(
                                               schedulingMessage,
                                             );
+                                          } else if (isFollowUpEmail) {
+                                            console.log(
+                                              '📧 Triggering AI follow-up email workflow',
+                                            );
+                                            const emailMessage = `Help me draft a follow-up email for ${deal?.companyName}. ${step}`;
+                                            await sendMessageWithText(
+                                              emailMessage,
+                                            );
+                                          } else if (isMeetingInvite) {
+                                            console.log(
+                                              '📅 Triggering AI meeting invite workflow',
+                                            );
+                                            const inviteMessage = `Help me create a meeting invite for ${deal?.companyName}. ${step}`;
+                                            await sendMessageWithText(
+                                              inviteMessage,
+                                            );
                                           } else {
-                                            // For other steps, use the regular AI assistant
+                                            // Fallback for any other allowed steps
                                             const message = `Help me with: ${step}`;
                                             await sendMessageWithText(message);
                                           }
@@ -3341,12 +3470,164 @@ I encountered an error while trying to add ${
                         )}
                       </div>
 
+                      {/* Key Information */}
+                      <div className="bg-designer-violet/10 border-designer-violet/30 rounded-lg border p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <h3 className="text-designer-violet flex items-center gap-2 text-sm font-semibold">
+                            <Info className="h-4 w-4" />
+                            KEY INFORMATION
+                          </h3>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={startEditingDescription}
+                            className="text-designer-violet hover:text-designer-violet/80 hover:bg-designer-violet/10 h-6 px-2 text-xs"
+                          >
+                            Edit
+                          </Button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {/* Description */}
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium text-gray-300">
+                              Description
+                            </h4>
+                            {isEditingDescription ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={editingDescription}
+                                  onChange={(e) =>
+                                    setEditingDescription(e.target.value)
+                                  }
+                                  className="min-h-[120px] resize-none border-gray-700 bg-gray-800 text-sm text-white"
+                                  placeholder="Enter deal description..."
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={saveDescription}
+                                    disabled={isSavingDescription}
+                                    className="bg-designer-violet hover:bg-designer-violet/90 h-7 px-3 text-xs"
+                                  >
+                                    {isSavingDescription ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      'Save'
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={cancelEditingDescription}
+                                    className="h-7 px-3 text-xs"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm leading-relaxed text-white/80">
+                                {/* Prioritize user-edited description, then AI-generated, then fallbacks */}
+                                {enhancedDeal.relationshipInsights ? (
+                                  <p>{enhancedDeal.relationshipInsights}</p>
+                                ) : (enhancedDeal as any).companyDescription ? (
+                                  <p>
+                                    {(enhancedDeal as any).companyDescription}
+                                  </p>
+                                ) : enhancedDeal.dealTitle ? (
+                                  <p>{enhancedDeal.dealTitle}</p>
+                                ) : (
+                                  <p className="text-gray-400 italic">
+                                    No company information available. Click Edit
+                                    to add a description.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Last Meeting Summary */}
+                          <div>
+                            <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
+                              <CalendarIcon className="h-3 w-3" />
+                              Last Meeting Summary
+                            </h4>
+                            <div className="text-sm leading-relaxed text-white/80">
+                              {enhancedDeal.last_meeting_summary ? (
+                                <p>{enhancedDeal.last_meeting_summary}</p>
+                              ) : (
+                                <p className="text-gray-400 italic">
+                                  No meetings yet. Schedule a meeting to get
+                                  started.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Email Summary */}
+                          <div>
+                            <div className="mb-2 flex items-center justify-between">
+                              <h4 className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                                <Mail className="h-3 w-3" />
+                                Recent Email Summary
+                              </h4>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={refreshEmailSummary}
+                                disabled={emailSummaryLoading}
+                                className="text-designer-violet hover:text-designer-violet/80 hover:bg-designer-violet/10 h-6 px-2 text-xs"
+                              >
+                                {emailSummaryLoading ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  'Refresh'
+                                )}
+                              </Button>
+                            </div>
+                            <div className="text-sm leading-relaxed text-white/80">
+                              {emailSummaryLoading ? (
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <span className="text-gray-400 italic">
+                                    Analyzing recent emails...
+                                  </span>
+                                </div>
+                              ) : emailSummaryError ? (
+                                <p className="text-red-400 italic">
+                                  {emailSummaryError}
+                                </p>
+                              ) : emailSummary ? (
+                                <p>{emailSummary}</p>
+                              ) : (
+                                <p className="text-gray-400 italic">
+                                  No recent emails found. Email conversations
+                                  will be automatically summarized.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Key People Section */}
                       <div className="bg-designer-violet/10 border-designer-violet/30 rounded-lg border p-4">
-                        <h3 className="text-designer-violet mb-4 flex items-center gap-2 text-sm font-semibold">
-                          <User className="h-4 w-4" />
-                          KEY PEOPLE
-                        </h3>
+                        <div className="mb-4 flex items-center justify-between">
+                          <h3 className="text-designer-violet flex items-center gap-2 text-sm font-semibold">
+                            <User className="h-4 w-4" />
+                            KEY PEOPLE
+                          </h3>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setActiveTab('contacts')}
+                            className="text-designer-violet hover:bg-designer-violet/20 h-6 px-2 text-xs hover:text-white"
+                          >
+                            <Plus className="mr-1 h-3 w-3" />
+                            Add Key Person
+                          </Button>
+                        </div>
 
                         {/* Identified Decision Makers */}
                         <div className="space-y-3">
@@ -3422,47 +3703,292 @@ I encountered an error while trying to add ${
                                   .filter((contact) => contact.isDecisionMaker)
                                   .map((contact, index) => (
                                     <div
-                                      key={index}
-                                      className="flex items-center gap-3 rounded-lg bg-gray-800/30 p-3"
+                                      key={contact.id}
+                                      className="rounded-lg bg-gray-800/30 p-3"
                                     >
-                                      <Avatar className="h-8 w-8">
-                                        <AvatarFallback className="bg-designer-violet/20 text-designer-violet text-xs">
-                                          {contact.name &&
-                                            contact.name
-                                              .substring(0, 2)
-                                              .toUpperCase()}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-white">
-                                          {contact.name}
-                                        </p>
-                                        <p className="text-xs text-gray-400">
-                                          {contact.role}
-                                        </p>
-                                        <div className="mt-1 flex items-center gap-1">
-                                          <Mail className="h-3 w-3 text-gray-400" />
-                                          <p className="truncate text-xs text-gray-400">
-                                            {contact.email}
-                                          </p>
+                                      {editingContact === contact.id ? (
+                                        // Edit mode for key people
+                                        <div className="space-y-3">
+                                          <div className="grid grid-cols-1 gap-3">
+                                            <div>
+                                              <Label className="text-xs font-medium text-gray-300">
+                                                Name
+                                              </Label>
+                                              <Input
+                                                value={editingContactData.name}
+                                                onChange={(e) =>
+                                                  setEditingContactData(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      name: e.target.value,
+                                                    }),
+                                                  )
+                                                }
+                                                className="mt-1 border-gray-600 bg-gray-700 text-sm text-white"
+                                                placeholder="Contact name"
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <Label className="text-xs font-medium text-gray-300">
+                                                Role
+                                              </Label>
+                                              <Input
+                                                value={editingContactData.role}
+                                                onChange={(e) =>
+                                                  setEditingContactData(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      role: e.target.value,
+                                                    }),
+                                                  )
+                                                }
+                                                className="mt-1 border-gray-600 bg-gray-700 text-sm text-white"
+                                                placeholder="Job title or role"
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <Label className="text-xs font-medium text-gray-300">
+                                                Email
+                                              </Label>
+                                              <Input
+                                                type="email"
+                                                value={editingContactData.email}
+                                                onChange={(e) =>
+                                                  setEditingContactData(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      email: e.target.value,
+                                                    }),
+                                                  )
+                                                }
+                                                className="mt-1 border-gray-600 bg-gray-700 text-sm text-white"
+                                                placeholder="email@example.com"
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <Label className="text-xs font-medium text-gray-300">
+                                                Phone
+                                              </Label>
+                                              <Input
+                                                type="tel"
+                                                value={editingContactData.phone}
+                                                onChange={(e) =>
+                                                  setEditingContactData(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      phone: e.target.value,
+                                                    }),
+                                                  )
+                                                }
+                                                className="mt-1 border-gray-600 bg-gray-700 text-sm text-white"
+                                                placeholder="+1 (555) 123-4567"
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <Label className="text-xs font-medium text-gray-300">
+                                                Contact Role Type
+                                              </Label>
+                                              <Select
+                                                value={
+                                                  editingContactData.contactRoleType
+                                                }
+                                                onValueChange={(
+                                                  value:
+                                                    | 'technical'
+                                                    | 'financial'
+                                                    | 'executive'
+                                                    | 'other',
+                                                ) =>
+                                                  setEditingContactData(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      contactRoleType: value,
+                                                    }),
+                                                  )
+                                                }
+                                              >
+                                                <SelectTrigger className="mt-1 border-gray-600 bg-gray-700 text-sm text-white">
+                                                  <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="technical">
+                                                    Technical
+                                                  </SelectItem>
+                                                  <SelectItem value="financial">
+                                                    Financial
+                                                  </SelectItem>
+                                                  <SelectItem value="executive">
+                                                    Executive
+                                                  </SelectItem>
+                                                  <SelectItem value="other">
+                                                    Other
+                                                  </SelectItem>
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+
+                                            <div className="flex items-center justify-between pt-2">
+                                              <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-2">
+                                                  <Switch
+                                                    checked={
+                                                      editingContactData.isDecisionMaker
+                                                    }
+                                                    onCheckedChange={(
+                                                      checked,
+                                                    ) =>
+                                                      setEditingContactData(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          isDecisionMaker:
+                                                            checked,
+                                                        }),
+                                                      )
+                                                    }
+                                                  />
+                                                  <Label className="text-xs text-gray-300">
+                                                    Decision Maker
+                                                  </Label>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <Switch
+                                                    checked={
+                                                      editingContactData.isPrimary
+                                                    }
+                                                    onCheckedChange={(
+                                                      checked,
+                                                    ) =>
+                                                      setEditingContactData(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          isPrimary: checked,
+                                                        }),
+                                                      )
+                                                    }
+                                                  />
+                                                  <Label className="text-xs text-gray-300">
+                                                    Primary Contact
+                                                  </Label>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 pt-2">
+                                            <Button
+                                              size="sm"
+                                              onClick={() =>
+                                                saveContact(contact.id)
+                                              }
+                                              disabled={isSavingContact}
+                                              className="bg-designer-violet hover:bg-designer-violet/80 h-7 px-3 text-xs text-white"
+                                            >
+                                              {isSavingContact ? (
+                                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                              ) : (
+                                                <CheckCircle className="mr-1 h-3 w-3" />
+                                              )}
+                                              Save
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={cancelEditingContact}
+                                              className="h-7 px-3 text-xs text-gray-400 hover:text-white"
+                                            >
+                                              Cancel
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() =>
+                                                deleteContact(contact.id)
+                                              }
+                                              disabled={isSavingContact}
+                                              className="ml-auto h-7 px-3 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                                            >
+                                              <AlertTriangle className="mr-1 h-3 w-3" />
+                                              Remove
+                                            </Button>
+                                          </div>
                                         </div>
-                                      </div>
-                                      <div className="flex gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7"
-                                        >
-                                          <Mail className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7"
-                                        >
-                                          <Phone className="h-3 w-3" />
-                                        </Button>
-                                      </div>
+                                      ) : (
+                                        // View mode for key people
+                                        <>
+                                          <div className="mb-2 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                              <Avatar className="h-8 w-8">
+                                                <AvatarFallback className="bg-designer-violet/20 text-designer-violet text-xs">
+                                                  {contact.name &&
+                                                    contact.name
+                                                      .substring(0, 2)
+                                                      .toUpperCase()}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                              <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-white">
+                                                  {contact.name}
+                                                </p>
+                                                <p className="text-xs text-gray-400">
+                                                  {contact.role}
+                                                </p>
+                                                <div className="mt-1 flex items-center gap-1">
+                                                  <Mail className="h-3 w-3 text-gray-400" />
+                                                  <p className="truncate text-xs text-gray-400">
+                                                    {contact.email}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() =>
+                                                startEditingContact(contact)
+                                              }
+                                              className="h-7 px-2 text-xs text-gray-400 hover:text-white"
+                                            >
+                                              <Edit className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+
+                                          <div className="flex items-center gap-4 text-xs">
+                                            {contact.contactRoleType && (
+                                              <Badge
+                                                variant="outline"
+                                                className="capitalize"
+                                              >
+                                                {contact.contactRoleType}
+                                              </Badge>
+                                            )}
+                                            {contact.isPrimary && (
+                                              <Badge className="bg-blue-500/20 text-blue-400">
+                                                Primary
+                                              </Badge>
+                                            )}
+                                            <div className="ml-auto flex gap-1">
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                              >
+                                                <Mail className="h-3 w-3" />
+                                              </Button>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                              >
+                                                <Phone className="h-3 w-3" />
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </>
+                                      )}
                                     </div>
                                   ))
                               ) : (
@@ -3649,22 +4175,8 @@ I encountered an error while trying to add ${
                             </div>
                             <div className="flex-1">
                               <p className="text-sm text-gray-400">
-                                No pain points identified yet. Ask AI to
-                                identify them.
+                                No pain points identified yet.
                               </p>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="mt-1 h-6 px-2 text-xs text-red-400 hover:bg-red-400/10 hover:text-red-300"
-                                onClick={async () => {
-                                  const message =
-                                    'Analyze this deal and identify the main pain points or challenges the customer is facing.';
-                                  await sendMessageWithText(message);
-                                }}
-                              >
-                                <ArrowRight className="mr-1 h-3 w-3" />
-                                Execute with AI
-                              </Button>
                             </div>
                           </div>
                         )}
@@ -4140,7 +4652,7 @@ I encountered an error while trying to add ${
                         </div>
                       )}
 
-                      {/* MeetGeek Meeting Insights - Only for real deals */}
+                      {/* AI Notetaker Meeting Insights - Only for real deals */}
                       {enhancedDeal.id &&
                         !enhancedDeal.id.startsWith('mock-') && (
                           <MeetingSummary
@@ -4148,148 +4660,6 @@ I encountered an error while trying to add ${
                             accountId={accountId}
                           />
                         )}
-
-                      {/* Key Information */}
-                      <div className="bg-designer-violet/10 border-designer-violet/30 rounded-lg border p-4">
-                        <div className="mb-4 flex items-center justify-between">
-                          <h3 className="text-designer-violet flex items-center gap-2 text-sm font-semibold">
-                            <Info className="h-4 w-4" />
-                            KEY INFORMATION
-                          </h3>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={startEditingDescription}
-                            className="text-designer-violet hover:text-designer-violet/80 hover:bg-designer-violet/10 h-6 px-2 text-xs"
-                          >
-                            Edit
-                          </Button>
-                        </div>
-
-                        <div className="space-y-4">
-                          {/* Description */}
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium text-gray-300">
-                              Description
-                            </h4>
-                            {isEditingDescription ? (
-                              <div className="space-y-2">
-                                <Textarea
-                                  value={editingDescription}
-                                  onChange={(e) =>
-                                    setEditingDescription(e.target.value)
-                                  }
-                                  className="min-h-[120px] resize-none border-gray-700 bg-gray-800 text-sm text-white"
-                                  placeholder="Enter deal description..."
-                                />
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    onClick={saveDescription}
-                                    disabled={isSavingDescription}
-                                    className="bg-designer-violet hover:bg-designer-violet/90 h-7 px-3 text-xs"
-                                  >
-                                    {isSavingDescription ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      'Save'
-                                    )}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={cancelEditingDescription}
-                                    className="h-7 px-3 text-xs"
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-sm leading-relaxed text-white/80">
-                                {(enhancedDeal as any).companyDescription ? (
-                                  <p>
-                                    {(enhancedDeal as any).companyDescription}
-                                  </p>
-                                ) : enhancedDeal.dealTitle ||
-                                  enhancedDeal.relationshipInsights ? (
-                                  <p>
-                                    {enhancedDeal.dealTitle ||
-                                      enhancedDeal.relationshipInsights}
-                                  </p>
-                                ) : (
-                                  <p className="text-gray-400 italic">
-                                    No company information available. AI summary
-                                    will be generated when the deal is created.
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Last Meeting Summary */}
-                          <div>
-                            <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
-                              <CalendarIcon className="h-3 w-3" />
-                              Last Meeting Summary
-                            </h4>
-                            <div className="text-sm leading-relaxed text-white/80">
-                              {enhancedDeal.last_meeting_summary ? (
-                                <p>{enhancedDeal.last_meeting_summary}</p>
-                              ) : (
-                                <p className="text-gray-400 italic">
-                                  No meetings yet. Schedule a meeting to get
-                                  started.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Email Summary */}
-                          <div>
-                            <div className="mb-2 flex items-center justify-between">
-                              <h4 className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                                <Mail className="h-3 w-3" />
-                                Recent Email Summary
-                              </h4>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={refreshEmailSummary}
-                                disabled={emailSummaryLoading}
-                                className="text-designer-violet hover:text-designer-violet/80 hover:bg-designer-violet/10 h-6 px-2 text-xs"
-                              >
-                                {emailSummaryLoading ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  'Refresh'
-                                )}
-                              </Button>
-                            </div>
-                            <div className="text-sm leading-relaxed text-white/80">
-                              {emailSummaryLoading ? (
-                                <div className="flex items-center gap-2">
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span className="text-gray-400 italic">
-                                    Analyzing recent emails...
-                                  </span>
-                                </div>
-                              ) : emailSummaryError ? (
-                                <p className="text-red-400 italic">
-                                  {emailSummaryError}
-                                </p>
-                              ) : emailSummary ? (
-                                <p>{emailSummary}</p>
-                              ) : (
-                                <p className="text-gray-400 italic">
-                                  No recent emails found. Email conversations
-                                  will be automatically summarized.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
                     </>
                   )}
                 </div>
@@ -4424,6 +4794,83 @@ I encountered an error while trying to add ${
                                     className="mt-1 border-gray-600 bg-gray-700 text-white"
                                     placeholder="+1 (555) 123-4567"
                                   />
+                                </div>
+
+                                <div>
+                                  <Label
+                                    htmlFor={`contactRoleType-${contact.id}`}
+                                    className="text-sm font-medium text-gray-300"
+                                  >
+                                    Contact Role Type
+                                  </Label>
+                                  <Select
+                                    value={editingContactData.contactRoleType}
+                                    onValueChange={(
+                                      value:
+                                        | 'technical'
+                                        | 'financial'
+                                        | 'executive'
+                                        | 'other',
+                                    ) =>
+                                      setEditingContactData((prev) => ({
+                                        ...prev,
+                                        contactRoleType: value,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="mt-1 border-gray-600 bg-gray-700 text-white">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="technical">
+                                        Technical
+                                      </SelectItem>
+                                      <SelectItem value="financial">
+                                        Financial
+                                      </SelectItem>
+                                      <SelectItem value="executive">
+                                        Executive
+                                      </SelectItem>
+                                      <SelectItem value="other">
+                                        Other
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2">
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Switch
+                                        checked={
+                                          editingContactData.isDecisionMaker
+                                        }
+                                        onCheckedChange={(checked) =>
+                                          setEditingContactData((prev) => ({
+                                            ...prev,
+                                            isDecisionMaker: checked,
+                                          }))
+                                        }
+                                      />
+                                      <Label className="text-sm text-gray-300">
+                                        Decision Maker
+                                      </Label>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Switch
+                                        checked={editingContactData.isPrimary}
+                                        onCheckedChange={(checked) =>
+                                          setEditingContactData((prev) => ({
+                                            ...prev,
+                                            isPrimary: checked,
+                                          }))
+                                        }
+                                      />
+                                      <Label className="text-sm text-gray-300">
+                                        Primary Contact
+                                      </Label>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
 
@@ -4985,7 +5432,7 @@ I encountered an error while trying to add ${
                         </div>
                       )}
 
-                    {/* MeetGeek Meeting Insights - Only for real deals */}
+                    {/* AI Notetaker Meeting Insights - Only for real deals */}
                     {enhancedDeal.id &&
                       !enhancedDeal.id.startsWith('mock-') && (
                         <MeetingSummary

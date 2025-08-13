@@ -224,7 +224,23 @@ export default function EmailList({ emails: initialEmails }: EmailListProps) {
       </div>
 
       <div className="space-y-4">
-        {emails.map((email) => (
+        {emails.length === 0 ? (
+          <div className="text-center py-12">
+            <Mail className="mx-auto h-12 w-12 text-muted-foreground/40" />
+            <h3 className="mt-4 text-lg font-medium text-muted-foreground">
+              No business emails found
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Add contacts to deals or schedule meetings to see relevant emails here.
+            </p>
+            <div className="mt-6 space-y-2 text-xs text-muted-foreground">
+              <p>💼 Emails from deal contacts will appear here</p>
+              <p>📅 Emails from meeting attendees will appear here</p>
+              <p>🔗 Emails from calendar event participants will appear here</p>
+            </div>
+          </div>
+        ) : (
+          emails.map((email) => (
           <Card
             key={email.id}
             className="hover:bg-muted/50 border-border bg-card cursor-pointer transition-colors"
@@ -294,7 +310,8 @@ export default function EmailList({ emails: initialEmails }: EmailListProps) {
               </p>
             </CardContent>
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Email Detail Dialog */}

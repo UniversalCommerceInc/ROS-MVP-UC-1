@@ -5,24 +5,35 @@ import { getSupabaseServerClient } from '@kit/supabase/server-client';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const { userId, accountId } = await request.json();
 
-    console.log('🔍 Fetching Pipedrive data for user:', userId);
+    // console.log('🔍 Fetching Pipedrive data for user:', userId);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 },
-      );
-    }
+    // if (!userId) {
+    //   return NextResponse.json(
+    //     { error: 'User ID is required' },
+    //     { status: 400 },
+    //   );
+    // }
 
     // Get stored tokens from database
     const supabase = getSupabaseServerClient();
 
+    // Verify user authentication and account access
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { data: tokenData, error } = await supabase
       .from('pipedrive_tokens')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
+      .eq('account_id', accountId)
       .order('created_at', { ascending: false }) // Get most recent token
       .limit(1)
       .maybeSingle();

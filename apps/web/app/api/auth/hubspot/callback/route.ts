@@ -152,19 +152,23 @@ export async function GET(request: Request) {
     // Store tokens in database
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-    const { error: dbError } = await supabase.from('hubspot_tokens').upsert({
-      account_id: accountId,
-      user_id: user.id,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: expiresAt.toISOString(),
-      email_address: userInfo?.email || null,
-      api_domain: 'https://api.hubapi.com',
-      user_info: userInfo || {},
-      scope:
-        tokens.scope ||
-        'crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read',
-    });
+    // Use upsert for reliable token storage
+    const { error: dbError } = await supabase
+      .from('hubspot_tokens')
+      .upsert({
+        account_id: accountId,
+        user_id: user.id,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at: expiresAt.toISOString(),
+        email_address: userInfo?.email || null,
+        api_domain: 'https://api.hubapi.com',
+        user_info: userInfo || {},
+        scope:
+          tokens.scope ||
+          'crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read',
+        updated_at: new Date().toISOString(),
+      });
 
     if (dbError) {
       console.error('Database error:', dbError);

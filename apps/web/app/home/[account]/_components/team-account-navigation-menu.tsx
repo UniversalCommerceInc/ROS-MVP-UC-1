@@ -56,7 +56,7 @@ export function TeamAccountNavigationMenu(props: {
   return (
     <div className={'flex w-full flex-1 justify-between'}>
       <div className={'flex items-center space-x-8'}>
-        <AppLogo />
+        <AppLogo href={`/home/${account.slug}/dealflow`} />
 
         <BorderedNavigationMenu>
           {routes.map((route, index) => (

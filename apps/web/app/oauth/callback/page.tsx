@@ -142,13 +142,18 @@ function OAuthCallbackContent() {
         `📞 Including ${filteredContacts.length} contacts for selected deals`,
       );
 
-      // Insert deals and contacts into Supabase
+      // Get account ID for analysis
+      const accountId = selectedDeals[0]?.account_id;
+
+      // Insert deals and contacts into Supabase with post-import analysis
       await insertTransformedData(
         {
           deals: selectedDeals,
           dealContacts: filteredContacts,
         },
         supabase,
+        accountId, // Enable post-import analysis
+        true       // Trigger analysis
       );
 
       console.log('🎉 Import completed successfully!');

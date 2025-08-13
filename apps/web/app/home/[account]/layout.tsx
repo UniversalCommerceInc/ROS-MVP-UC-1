@@ -62,7 +62,7 @@ function SidebarLayout({
           </PageNavigation>
 
           <PageMobileNavigation className={'flex items-center justify-between'}>
-            <AppLogo />
+            <AppLogo href={`/home/${account}/dealflow`} />
 
             <div className={'flex space-x-4'}>
               <TeamAccountLayoutMobileNavigation
@@ -101,17 +101,17 @@ function HeaderLayout({
           <TeamAccountNavigationMenu workspace={data} />
         </PageNavigation>
 
-        <PageMobileNavigation className={'flex items-center justify-between'}>
-          <AppLogo />
+                  <PageMobileNavigation className={'flex items-center justify-between'}>
+            <AppLogo href={`/home/${account}/dealflow`} />
 
-          <div className={'group-data-[mobile:hidden]'}>
-            <TeamAccountLayoutMobileNavigation
-              userId={data.user.id}
-              accounts={accounts}
-              account={account}
-            />
-          </div>
-        </PageMobileNavigation>
+            <div className={'group-data-[mobile:hidden]'}>
+              <TeamAccountLayoutMobileNavigation
+                userId={data.user.id}
+                accounts={accounts}
+                account={account}
+              />
+            </div>
+          </PageMobileNavigation>
 
         {children}
       </Page>

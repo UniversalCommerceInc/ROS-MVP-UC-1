@@ -56,11 +56,9 @@ export const connectGmailAction = enhanceAction(
         'https://www.googleapis.com/auth/calendar.events',
       ];
 
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
-      if (!baseUrl) {
-        throw new Error('NEXT_PUBLIC_SITE_URL not configured');
-      }
-      const redirectUri = `${baseUrl}/api/auth/gmail/callback`;
+      // Use environment variable or build dynamically  
+      const redirectUri = process.env.GOOGLE_REDIRECT_URI || 
+        `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/auth/gmail/callback`;
 
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authUrl.searchParams.set('client_id', clientId);
@@ -188,11 +186,9 @@ export const connectMicrosoftAction = enhanceAction(
         'offline_access', // Required for refresh tokens
       ];
 
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
-      if (!baseUrl) {
-        throw new Error('NEXT_PUBLIC_SITE_URL not configured');
-      }
-      const redirectUri = `${baseUrl}/api/auth/microsoft/callback`;
+      const redirectUri =
+        process.env.MICROSOFT_REDIRECT_URI ||
+        'http://localhost:3000/api/auth/microsoft/callback';
 
       const authUrl = new URL(
         'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',

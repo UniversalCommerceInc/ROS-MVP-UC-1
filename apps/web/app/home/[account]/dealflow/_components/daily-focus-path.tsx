@@ -15,6 +15,7 @@ import {
 import { Button } from '@kit/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@kit/ui/card';
 import { cn } from '@kit/ui/utils';
+import { cleanCompanyName } from '../_lib/utils';
 
 // Re-using the Deal interface
 interface MomentumMarker {
@@ -91,7 +92,7 @@ const FocusDealCard = memo(
         <CardHeader className="p-3">
           <div className="flex items-center justify-between">
             <CardTitle className="truncate text-sm font-semibold text-white">
-              {deal.companyName}
+              {cleanCompanyName(deal.companyName)}
             </CardTitle>
             <span
               className={cn(

@@ -83,6 +83,13 @@ async function checkForTeamRedirect(): Promise<string | null> {
         });
         return `/home/${teamAccount.slug}/dealflow`;
       }
+    } else {
+      // No team memberships found, redirect to vellora-sales dealflow as fallback
+      console.log('🔄 No team memberships found, redirecting to vellora-sales dealflow:', {
+        userId: user.id,
+        redirectTo: '/home/vellora-sales/dealflow'
+      });
+      return '/home/vellora-sales/dealflow';
     }
 
     return null;

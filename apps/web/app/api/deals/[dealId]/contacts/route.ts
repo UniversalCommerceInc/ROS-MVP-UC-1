@@ -70,6 +70,7 @@ export async function GET(
         email,
         phone,
         role,
+        contact_role_type,
         is_primary,
         is_decision_maker,
         last_contacted,
@@ -103,6 +104,7 @@ export async function GET(
         isDecisionMaker: dc.is_decision_maker,
         lastContacted: dc.last_contacted,
         isPrimary: dc.is_primary,
+        contactRoleType: dc.contact_role_type,
       })) || [];
 
     return NextResponse.json({ contacts });

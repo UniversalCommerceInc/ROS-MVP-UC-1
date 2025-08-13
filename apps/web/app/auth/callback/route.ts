@@ -81,6 +81,10 @@ export async function GET(request: NextRequest) {
               });
             }
           }
+        } else if (nextPath === pathsConfig.app.home) {
+          // No team memberships found, redirect to vellora-sales dealflow as fallback
+          nextPath = '/home/vellora-sales/dealflow';
+          console.log(`🎯 No team memberships found, redirecting to vellora-sales dealflow: ${nextPath}`);
         }
       } catch (error) {
         console.error('❌ Error triggering meeting sync:', error);

@@ -5,23 +5,49 @@ import { getSupabaseServerClient } from '@kit/supabase/server-client';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const { accountId, userId } = await request.json();
 
-    console.log('🔍 Fetching HubSpot data for user:', userId);
+    console.log('🔍 Fetching HubSpot data for account:', accountId);
 
-    if (!userId) {
+    if (!accountId) {
       return NextResponse.json(
-        { error: 'User ID is required' },
+        { error: 'Account ID is required' },
         { status: 400 },
       );
     }
 
     const supabase = getSupabaseServerClient();
 
+    // Verify user authentication and account access
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Verify user has access to this account
+    const { data: membership } = await supabase
+      .from('accounts_memberships')
+      .select('account_role')
+      .eq('account_id', accountId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: 'Access denied to this account' },
+        { status: 403 }
+      );
+    }
+
+    // Get HubSpot tokens for this account (not user)
     const { data: tokenData, error } = await supabase
       .from('hubspot_tokens')
       .select('*')
-      .eq('user_id', userId)
+      .eq('account_id', accountId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -35,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!tokenData) {
-      console.error('❌ No stored tokens found for user:', userId);
+      console.error('❌ No stored tokens found for account:', accountId);
       return NextResponse.json(
         {
           error: 'No HubSpot connection found. Please reconnect your account.',
@@ -100,6 +126,25 @@ export async function POST(request: NextRequest) {
     const dealsData = await dealsResponse.json();
     const deals = dealsData.results || [];
     console.log(`✅ Successfully fetched ${deals.length} deals from HubSpot`);
+    
+    // Debug: Check if deals have contact associations
+    const dealsWithContacts = deals.filter(deal => deal.associations?.contacts?.results?.length > 0);
+    console.log(`📞 Deals with contact associations: ${dealsWithContacts.length} out of ${deals.length}`);
+    
+    if (dealsWithContacts.length > 0) {
+      console.log(`📋 Sample deal with contacts:`, {
+        dealId: dealsWithContacts[0].id,
+        dealName: dealsWithContacts[0].properties?.dealname,
+        contactIds: dealsWithContacts[0].associations.contacts.results.map(c => c.id)
+      });
+    } else {
+      console.log(`⚠️ No deals have contact associations. Sample deal structure:`, {
+        dealId: deals[0]?.id,
+        dealName: deals[0]?.properties?.dealname,
+        hasAssociations: !!deals[0]?.associations,
+        associationKeys: deals[0]?.associations ? Object.keys(deals[0].associations) : 'none'
+      });
+    }
 
     // Step 2: Extract contact IDs from deals (following N8N workflow)
     const contactIds: string[] = [];
@@ -113,41 +158,101 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`📞 Found ${contactIds.length} unique contacts to fetch`);
+    
+    if (contactIds.length > 0) {
+      console.log(`📋 Contact IDs to fetch: ${contactIds.slice(0, 5).join(', ')}${contactIds.length > 5 ? ` ... and ${contactIds.length - 5} more` : ''}`);
+    }
 
     let contactsData: any[] = [];
 
-    // Step 3: Fetch contact details if we have contact IDs
+    // Step 3: Fetch contact details if we have contact IDs (in batches)
     if (contactIds.length > 0) {
-      const contactsResponse = await fetch(
-        'https://api.hubapi.com/crm/v3/objects/contacts/batch/read',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${tokenData.access_token}`,
-            'Content-Type': 'application/json',
+      // HubSpot batch API has a limit of 100 records per request
+      const batchSize = 100;
+      const batches = [];
+      
+      for (let i = 0; i < contactIds.length; i += batchSize) {
+        batches.push(contactIds.slice(i, i + batchSize));
+      }
+      
+      console.log(`🔗 Making ${batches.length} contact batch API calls for ${contactIds.length} total contacts`);
+      
+      // Process batches sequentially to avoid rate limiting
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        
+        const contactRequest = {
+          properties: [
+            'email',
+            'firstname',
+            'lastname',
+            'phone',
+            'company',
+          ],
+          inputs: batch.map((id) => ({ id })),
+        };
+        
+        console.log(`📋 Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} contacts`);
+        
+        const contactsResponse = await fetch(
+          'https://api.hubapi.com/crm/v3/objects/contacts/batch/read',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${tokenData.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(contactRequest),
           },
-          body: JSON.stringify({
-            properties: [
-              'email',
-              'firstname',
-              'lastname',
-              'phone',
-              'company',
-              'address',
-            ],
-            inputs: contactIds.map((id) => ({ id })),
-          }),
-        },
-      );
-
-      if (contactsResponse.ok) {
-        const contactsResult = await contactsResponse.json();
-        contactsData = contactsResult.results || [];
-        console.log(`✅ Successfully fetched ${contactsData.length} contacts`);
-      } else {
-        console.warn(
-          '⚠️ Failed to fetch contact details, continuing without them',
         );
+
+        if (contactsResponse.ok) {
+          const contactsResult = await contactsResponse.json();
+          const batchContactsData = contactsResult.results || [];
+          contactsData.push(...batchContactsData);
+          console.log(`✅ Batch ${batchIndex + 1}: Successfully fetched ${batchContactsData.length} contacts`);
+        } else {
+          const errorText = await contactsResponse.text();
+          console.warn(`⚠️ Contact batch ${batchIndex + 1} API failed (${contactsResponse.status}): ${errorText}`);
+          
+          // Try to parse the error for more details
+          try {
+            const errorData = JSON.parse(errorText);
+            console.warn(`📋 Error details for batch ${batchIndex + 1}:`, errorData);
+            
+            if (errorData.message?.includes('PROPERTY_DOESNT_EXIST')) {
+              console.warn(`🔧 Suggestion: Some contact properties may not exist in your HubSpot account`);
+            } else if (errorData.message?.includes('PERMISSION')) {
+              console.warn(`🔐 Suggestion: Check HubSpot token permissions for contact access`);
+            } else if (errorData.message?.includes('INVALID_CONTACT_ID')) {
+              console.warn(`🆔 Some contact IDs in this batch may be invalid or deleted`);
+            }
+          } catch (parseError) {
+            // Error response wasn't JSON
+          }
+          
+          // Continue with next batch even if this one fails
+          console.warn(`📄 Batch ${batchIndex + 1} failed, continuing with remaining batches...`);
+        }
+        
+        // Add small delay between batches to avoid rate limiting
+        if (batchIndex < batches.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log(`🎉 Total contacts fetched from all batches: ${contactsData.length}`);
+      
+      if (contactsData.length > 0) {
+        console.log(`📋 Sample contact data:`, {
+          contactId: contactsData[0].id,
+          properties: Object.keys(contactsData[0].properties || {}),
+          email: contactsData[0].properties?.email,
+          firstName: contactsData[0].properties?.firstname,
+          lastName: contactsData[0].properties?.lastname
+        });
+      } else {
+        console.warn(`📄 No contact data retrieved - deals will be imported with basic info only`);
       }
     }
 
@@ -162,7 +267,7 @@ export async function POST(request: NextRequest) {
       const contactId = deal.associations?.contacts?.results?.[0]?.id;
       const contact = contactMap[contactId];
 
-      return {
+      const mergedDeal = {
         id: deal.id,
         name: props.dealname,
         description: props.description || null,
@@ -185,6 +290,16 @@ export async function POST(request: NextRequest) {
             }
           : null,
       };
+
+      // Debug logging for each deal merge
+      console.log(`🔄 Merging deal: ${props.dealname || deal.id}`, {
+        hasContactAssociation: !!contactId,
+        contactId: contactId,
+        contactFound: !!contact,
+        finalContactData: mergedDeal.contacts ? 'YES' : 'NO'
+      });
+
+      return mergedDeal;
     });
 
     console.log(

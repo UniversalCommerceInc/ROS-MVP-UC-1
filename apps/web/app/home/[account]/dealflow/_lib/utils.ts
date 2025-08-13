@@ -110,3 +110,44 @@ export function getMomentumStatusText(
   if (isDealStalled(momentum)) return 'stalled';
   return trend; // Return the actual database enum value: 'up', 'down', or 'steady'
 }
+
+/**
+ * Cleans up company names by removing protocols, www prefix, and domain extensions
+ * to create clean, displayable company names from URLs or domain strings
+ */
+export function cleanCompanyName(companyName?: string | null): string {
+  if (!companyName) return 'Untitled Deal';
+  
+  let cleaned = companyName
+    // Remove protocol prefixes
+    .replace(/^https?:\/\//, '')
+    // Remove www prefix
+    .replace(/^www\./, '')
+    // Remove trailing slashes
+    .replace(/\/$/, '');
+  
+  // Split by dots and take the first part (before domain extension)
+  const parts = cleaned.split('.');
+  if (parts.length > 1) {
+    // Common domain extensions to remove
+    const commonExtensions = [
+      'com', 'net', 'org', 'io', 'co', 'ai', 'app', 'dev', 'tech', 
+      'xyz', 'inc', 'llc', 'ltd', 'biz', 'info', 'me', 'ly', 'tv',
+      'gov', 'edu', 'mil', 'int'
+    ];
+    
+    // If the last part is a common extension, remove it
+    const lastPart = parts[parts.length - 1].toLowerCase();
+    if (commonExtensions.includes(lastPart)) {
+      // Join all parts except the last one
+      cleaned = parts.slice(0, -1).join('.');
+    }
+  }
+  
+  // Capitalize first letter of each word for better display
+  return cleaned
+    .split(/[-_\s]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim() || 'Untitled Deal';
+}

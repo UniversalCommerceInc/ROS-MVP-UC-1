@@ -39,14 +39,36 @@ export function AutoEmailConnection({
 
   // Check if this is a first login or if auto-connection was skipped
   const isFirstLogin = searchParams.get('first_login') === 'true';
-  const autoConnectionSkipped = searchParams.get('email_skipped') === 'true';
+  const autoConnectionSkipped = searchParams.get('gmail_skipped') === 'true';
+  const gmailConnected = searchParams.get('gmail_connected') === 'true';
+  const connectionError = searchParams.get('error') === 'connection_failed';
+
+  // Storage keys for tracking connection attempts
+  const storageKey = `gmail_connection_attempted_${accountId}`;
+  const skipStorageKey = `gmail_connection_skipped_${accountId}`;
 
   useEffect(() => {
+    // Check if connection attempt was already made or user previously skipped
+    const connectionAttempted = localStorage.getItem(storageKey) === 'true';
+    const previouslySkipped = localStorage.getItem(skipStorageKey) === 'true';
+
+    // Clear attempt flag if Gmail is now connected
+    if (hasEmailConnected || gmailConnected) {
+      localStorage.removeItem(storageKey);
+      localStorage.removeItem(skipStorageKey);
+      return;
+    }
+
+    // Don't show if connection was already attempted or skipped
+    if (connectionAttempted || previouslySkipped || autoConnectionSkipped) {
+      return;
+    }
+
     // Only auto-connect if:
     // 1. This is a first login OR
-    // 2. User doesn't have any email provider connected AND hasn't explicitly skipped it
+    // 2. User doesn't have Gmail connected AND hasn't tried before
     const shouldAutoConnect =
-      (isFirstLogin || !hasEmailConnected) && !autoConnectionSkipped;
+      (isFirstLogin || !hasEmailConnected) && !connectionError;
 
     if (shouldAutoConnect && !isConnecting) {
       // Small delay to ensure page is loaded
@@ -54,14 +76,27 @@ export function AutoEmailConnection({
         setShowDialog(true);
       }, 1000);
     }
-  }, [isFirstLogin, hasEmailConnected, autoConnectionSkipped, isConnecting]);
+  }, [
+    isFirstLogin,
+    hasEmailConnected,
+    autoConnectionSkipped,
+    isConnecting,
+    accountId,
+    gmailConnected,
+    connectionError,
+    storageKey,
+    skipStorageKey,
+  ]);
 
   const handleConnectGmail = async () => {
     setIsConnecting(true);
     setConnectingProvider('gmail');
 
     try {
-      toast.info('Setting up Gmail & Google Calendar integration...');
+      // Mark that a connection attempt was made
+      localStorage.setItem(storageKey, 'true');
+
+      toast.info('Setting up Gmail & Calendar integration...');
 
       // Generate Gmail OAuth URL with auto-connect flag
       const connectResponse = await fetch('/api/auth/gmail/connect', {
@@ -144,6 +179,10 @@ export function AutoEmailConnection({
 
   const handleSkip = () => {
     setShowDialog(false);
+
+    // Mark that user skipped connection
+    localStorage.setItem(skipStorageKey, 'true');
+
     // Add parameter to prevent showing again during this session
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('email_skipped', 'true');

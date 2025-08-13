@@ -160,7 +160,7 @@
   "leaveTeamInputDescription": "By leaving the team, you will no longer have access to it.",
   "reservedNameError": "This name is reserved. Please choose a different one.",
   "specialCharactersError": "This name cannot contain special characters. Please choose a different one.",
-  "pendingInvitations": "Pending Team Invitations",
+  "pendingInvitations": "Pending Invitations ({{count}})",
   "pendingInvitationsDescription": "You have been invited to join these teams",
   "acceptInvitation": "Accept",
   "declineInvitation": "Decline"

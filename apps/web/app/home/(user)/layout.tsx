@@ -78,9 +78,13 @@ function MobileNavigation({
 }: {
   workspace: Awaited<ReturnType<typeof loadUserWorkspace>>;
 }) {
+  // Find vellora-sales account or use the first team account
+  const targetAccount = workspace.accounts.find(account => account.slug === 'vellora-sales') || workspace.accounts[0];
+  const dealflowHref = targetAccount ? `/home/${targetAccount.slug}/dealflow` : '/home/vellora-sales/dealflow';
+
   return (
     <>
-      <AppLogo />
+      <AppLogo href={dealflowHref} />
 
       <HomeMobileNavigation workspace={workspace} />
     </>

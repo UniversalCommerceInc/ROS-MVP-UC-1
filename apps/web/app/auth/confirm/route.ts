@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
           url.pathname = `/home/${firstAccount.slug}/dealflow`;
           console.log(`🎯 Email confirm redirecting to team dealflow: ${url.pathname}`);
         }
+      } else {
+        // No team memberships found, redirect to vellora-sales dealflow as fallback
+        url.pathname = '/home/vellora-sales/dealflow';
+        console.log(`🎯 Email confirm no team memberships, redirecting to vellora-sales dealflow: ${url.pathname}`);
       }
     }
   } catch (error) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, use, useEffect, useState } from 'react';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
@@ -11,6 +11,7 @@ import { getSupabaseBrowserClient } from '@kit/supabase/browser-client';
 import DataImportDialog from '~/components/data-import-dialog';
 import {
   TransformResult,
+  checkExistingDeals,
   insertTransformedData,
   transformDeals,
 } from '~/lib/utils/dataTransform';
@@ -31,6 +32,15 @@ function ImportContent({ platform }: { platform: string }) {
     deals: [],
     dealContacts: [],
   });
+  const [duplicateCheckResult, setDuplicateCheckResult] = useState<{
+    existingDeals: any[];
+    newDeals: any[];
+    duplicateInfo: Array<{
+      importDeal: any;
+      existingDeal: any;
+      reason: string;
+    }>;
+  } | null>(null);
   const [supabase, setSupabase] = useState<any>(null);
   const account = params.account as string;
 
@@ -82,8 +92,6 @@ function ImportContent({ platform }: { platform: string }) {
     initSupabase();
   }, []);
 
-  // Updated section of the ImportContent component - just the relevant part
-
   useEffect(() => {
     const handleImport = async () => {
       try {
@@ -101,69 +109,97 @@ function ImportContent({ platform }: { platform: string }) {
           throw new Error('Platform parameter missing');
         }
 
-        if (connected === 'true') {
-          console.log(`✅ User connected to ${platform}, fetching data...`);
-
-          // Get account ID from URL params
-          const accountId = await getAccountIdFromParams();
-
-          if (!accountId) {
-            throw new Error('Account ID not found. Please try again.');
-          }
-
-          const requestBody: any = { accountId };
-
-          // For non-Folk platforms, also include userId if available
-          if (platform !== 'folk' && userId) {
-            requestBody.userId = userId;
-          }
-
-          console.log(`📝 Request body for ${platform}:`, requestBody);
-
-          const dataResponse = await fetch(`/api/crm/${platform}/fetch-data`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!dataResponse.ok) {
-            const errorData = await dataResponse.json();
-            throw new Error(
-              errorData.error || `Failed to fetch ${platform} data`,
-            );
-          }
-
-          const apiData = await dataResponse.json();
-          console.log('📊 Data received:', {
-            dealCount: apiData.data?.length || 0,
-            accountId: apiData.accountId,
-            platform: platform,
-          });
-
-          if (!apiData.data || apiData.data.length === 0) {
-            console.log('📝 No data found');
-            setTransformedData({ deals: [], dealContacts: [] });
-          } else {
-            const createdBy = userId || 'current-user';
-            const transformed = transformDeals(
-              apiData.data,
-              platform,
-              apiData.accountId,
-              createdBy,
-            );
-            setTransformedData(transformed);
-            console.log(
-              `✅ Transformed: ${transformed.deals.length} deals, ${transformed.dealContacts.length} contacts`,
-            );
-          }
-
-          setShowImportDialog(true);
-          setLoading(false);
-          return;
+        // Check if user just connected (from OAuth callback) or is already connected
+        const isFromOAuthCallback = connected === 'true';
+        
+        if (isFromOAuthCallback) {
+          console.log(`✅ User just connected to ${platform} via OAuth, fetching data...`);
+        } else {
+          console.log(`🔄 User navigated to import page directly, checking existing connection...`);
         }
 
-        throw new Error('Invalid import state - missing connection data');
+        // Get account ID from URL params
+        const accountId = await getAccountIdFromParams();
+
+        if (!accountId) {
+          throw new Error('Account ID not found. Please try again.');
+        }
+
+        const requestBody: any = { accountId };
+
+        // For non-Folk platforms, also include userId if available
+        if (platform !== 'folk' && userId) {
+          requestBody.userId = userId;
+        }
+
+        console.log(`📝 Request body for ${platform}:`, requestBody);
+
+        const dataResponse = await fetch(`/api/crm/${platform}/fetch-data`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!dataResponse.ok) {
+          const errorData = await dataResponse.json();
+          throw new Error(
+            errorData.error || `Failed to fetch ${platform} data`,
+          );
+        }
+
+        const apiData = await dataResponse.json();
+        console.log('📊 Data received:', {
+          dealCount: apiData.data?.length || 0,
+          accountId: apiData.accountId,
+          platform: platform,
+        });
+
+        if (!apiData.data || apiData.data.length === 0) {
+          console.log('📝 No data found');
+          setTransformedData({ deals: [], dealContacts: [] });
+        } else {
+          // Get current user ID from Supabase auth
+          const { data: { user } } = await supabase.auth.getUser();
+          const createdBy = userId || user?.id || null;
+          
+          if (!createdBy) {
+            throw new Error('Unable to determine current user for import');
+          }
+          
+          console.log(`👤 Import will be created by user: ${createdBy}`);
+          
+          const transformed = transformDeals(
+            apiData.data,
+            platform,
+            apiData.accountId,
+            createdBy,
+          );
+
+          // 🔍 CHECK FOR EXISTING DEALS BEFORE SHOWING DIALOG
+          console.log('🔍 Checking for existing deals...');
+          const duplicateCheck = await checkExistingDeals(
+            transformed.deals,
+            supabase,
+            apiData.accountId,
+          );
+
+          setDuplicateCheckResult(duplicateCheck);
+          setTransformedData(transformed);
+
+          console.log(`✅ Duplicate check complete:`, {
+            total: transformed.deals.length,
+            duplicates: duplicateCheck.existingDeals.length,
+            new: duplicateCheck.newDeals.length,
+          });
+
+          console.log(
+            `✅ Transformed: ${transformed.deals.length} deals, ${transformed.dealContacts.length} contacts`,
+          );
+        }
+
+        setShowImportDialog(true);
+        setLoading(false);
       } catch (err) {
         console.error(`💥 ${platform} import error:`, err);
         setError(err instanceof Error ? err.message : 'Unknown error occurred');
@@ -251,15 +287,28 @@ function ImportContent({ platform }: { platform: string }) {
     } catch (err) {
       console.error('💥 Import error:', err);
 
+      let errorMessage = 'Unknown error occurred';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+
+        // Parse specific error types for better user messaging
+        if (
+          errorMessage.includes(
+            'duplicate key value violates unique constraint "deals_deal_id_key"',
+          )
+        ) {
+          errorMessage = `Some deals already exist in your system. Please refresh the page and try importing only new deals. If the issue persists, contact support.`;
+        } else if (errorMessage.includes('Deal insertion partially failed')) {
+          errorMessage = `Some deals couldn't be imported due to duplicates or conflicts. ${errorMessage}`;
+        }
+      }
+
       toast.error(`${config.name} Import Failed`, {
-        description:
-          err instanceof Error
-            ? `Failed to import ${config.name} data: ${err.message}`
-            : `${config.name} import failed due to an unknown error.`,
-        duration: 5000,
+        description: `Failed to import ${config.name} data: ${errorMessage}`,
+        duration: 10000, // Longer duration for error messages
       });
 
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -313,47 +362,28 @@ function ImportContent({ platform }: { platform: string }) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M5 13l4 4L19 7"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z"
                 />
               </svg>
             </div>
             <h2 className="mb-2 text-xl font-semibold text-white">
-              {config.name} Data Ready for Import
+              Import Error
             </h2>
-            <p className="mb-4 text-gray-400">
-              {transformedData.deals.length === 0
-                ? `No ${platform === 'folk' ? 'people' : 'deals'} found in your ${config.name} account, but the connection was successful.`
-                : `Found ${transformedData.deals.length} ${platform === 'folk' ? 'people' : 'deals'} from ${config.name} ready for import.`}
-            </p>
-            {transformedData.deals.length > 0 && (
-              <div className="text-sm text-gray-500">
-                Review and select the data you want to import into your system.
-              </div>
-            )}
+            <p className="mb-4 text-gray-400">{error}</p>
+            <button
+              onClick={() => {
+                if (account) {
+                  router.push(`/home/${account}/integrations`);
+                } else {
+                  router.push('/integrations');
+                }
+              }}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            >
+              Back to Integrations
+            </button>
           </div>
         </div>
-
-        {showImportDialog && transformedData.deals.length > 0 && (
-          <DataImportDialog
-            deals={transformedData.deals}
-            isOpen={showImportDialog}
-            onClose={() => {
-              setShowImportDialog(false);
-              toast.info(`${config.name} Import Cancelled`, {
-                description: `You can always import your ${config.name} data later from the integrations page.`,
-                duration: 3000,
-              });
-
-              // const accountId = getAccountIdForRedirect();
-              if (account) {
-                router.push(`/home/${account}/integrations`);
-              } else {
-                router.push('/integrations');
-              }
-            }}
-            onImport={handleImport}
-          />
-        )}
       </>
     );
   }
@@ -364,6 +394,7 @@ function ImportContent({ platform }: { platform: string }) {
       {showImportDialog && transformedData.deals.length > 0 && (
         <DataImportDialog
           deals={transformedData.deals}
+          duplicateCheckResult={duplicateCheckResult}
           isOpen={showImportDialog}
           onClose={() => {
             setShowImportDialog(false);
@@ -381,13 +412,55 @@ function ImportContent({ platform }: { platform: string }) {
           onImport={handleImport}
         />
       )}
+
+      {/* Show success message if no deals but connection was successful */}
+      {showImportDialog && transformedData.deals.length === 0 && (
+        <div className="flex min-h-screen items-center justify-center bg-black">
+          <div className="max-w-md text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
+              <svg
+                className="h-8 w-8 text-green-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </div>
+            <h2 className="mb-2 text-xl font-semibold text-white">
+              {config.name} Connected Successfully
+            </h2>
+            <p className="mb-4 text-gray-400">
+              No {platform === 'folk' ? 'people' : 'deals'} found in your{' '}
+              {config.name} account, but the connection was successful.
+            </p>
+            <button
+              onClick={() => {
+                if (account) {
+                  router.push(`/home/${account}/dealflow`);
+                } else {
+                  router.push('/dealflow');
+                }
+              }}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            >
+              Go to Dealflow
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 // ✅ Main page component
-async function ImportCRMPage({ params }: ImportPageProps) {
-  const { crm: platform } = await params;
+function ImportCRMPage({ params }: ImportPageProps) {
+  const { crm: platform } = use(params);
 
   const validPlatforms = ['salesforce', 'hubspot', 'pipedrive', 'zoho', 'folk'];
   if (!validPlatforms.includes(platform)) {

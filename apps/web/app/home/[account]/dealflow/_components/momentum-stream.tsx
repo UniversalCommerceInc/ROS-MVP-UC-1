@@ -14,6 +14,7 @@ import {
 import { Button } from '@kit/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@kit/ui/card';
 import { cn } from '@kit/ui/utils';
+import { cleanCompanyName } from '../_lib/utils';
 
 // Assuming DealCard is imported from the main page or a shared location
 // For this example, we'll define a minimal DealCard if not provided
@@ -102,7 +103,7 @@ const MomentumDealCard = memo(
         <CardHeader className="p-3">
           <div className="flex items-center justify-between">
             <CardTitle className="truncate text-sm font-medium text-white">
-              {deal.companyName}
+              {cleanCompanyName(deal.companyName)}
             </CardTitle>
             <span
               className={cn(

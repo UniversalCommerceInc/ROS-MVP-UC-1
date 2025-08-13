@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     const scheduler = new CalendarSchedulerService(
       process.env.GOOGLE_CLIENT_ID!,
       process.env.GOOGLE_CLIENT_SECRET!,
-      process.env.BASE_URL + '/api/auth/gmail/callback',
+      process.env.NEXT_PUBLIC_SITE_URL + '/api/auth/gmail/callback',
     );
 
     const eventDetails = {

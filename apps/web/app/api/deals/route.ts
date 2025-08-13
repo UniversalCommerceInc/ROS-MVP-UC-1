@@ -616,6 +616,29 @@ Duration: ${meeting.end_time ? 'Full meeting' : 'Scheduled'}`
       console.log('🎯 Using URL:', `${baseUrl}/api/momentum-scoring`);
     }
 
+    // Trigger comprehensive analysis for the newly created deal
+    try {
+      console.log('🔍 Triggering comprehensive analysis for new deal...');
+      
+      // Import the DealAnalysisService dynamically
+      const { DealAnalysisService } = await import('~/lib/services/dealAnalysisService');
+      
+      // Trigger analysis in background (don't await to avoid blocking response)
+      DealAnalysisService.analyzeDeal(deal.id, deal.account_id, {
+        includeCompanyAnalysis: true,
+        includeEmailAnalysis: false, // Will be analyzed later when emails are connected
+        includeMeetingAnalysis: false, // Will be analyzed when meetings are added
+        includeMomentumUpdate: true,
+        trigger: 'creation'
+      }).catch(error => {
+        console.error('❌ Background analysis failed for new deal:', error);
+      });
+      
+    } catch (analysisError) {
+      console.error('❌ Failed to trigger deal analysis:', analysisError);
+      // Don't fail the deal creation if analysis fails
+    }
+
     return NextResponse.json({
       success: true,
       deal,

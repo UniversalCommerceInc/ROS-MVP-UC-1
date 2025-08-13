@@ -272,6 +272,31 @@ async function adminMiddleware(request: NextRequest, response: NextResponse) {
 function getPatterns() {
   return [
     {
+      pattern: new URLPattern({ pathname: '/' }),
+      handler: async (req: NextRequest, res: NextResponse) => {
+        // Handle OAuth codes that arrive at root URL (from misconfigured redirect URIs)
+        const code = req.nextUrl.searchParams.get('code');
+        const state = req.nextUrl.searchParams.get('state');
+        
+        if (code) {
+          console.log('🔄 OAuth code detected at root URL, redirecting to auth callback...', {
+            hasCode: !!code,
+            hasState: !!state,
+            searchParams: Object.fromEntries(req.nextUrl.searchParams.entries())
+          });
+
+          // Build auth callback URL with all search parameters
+          const authCallbackUrl = new URL('/auth/callback', req.nextUrl.origin);
+          req.nextUrl.searchParams.forEach((value, key) => {
+            authCallbackUrl.searchParams.set(key, value);
+          });
+
+          console.log('🎯 Middleware redirecting OAuth to:', authCallbackUrl.toString());
+          return NextResponse.redirect(authCallbackUrl.toString());
+        }
+      },
+    },
+    {
       pattern: new URLPattern({ pathname: '/admin/*?' }),
       handler: adminMiddleware,
     },

@@ -34,7 +34,7 @@ export default async function RootLayout({
 
   return (
     <html lang={language} className={className} suppressHydrationWarning>
-      <body>
+      <body className={className}>
         <RootProviders theme={theme} lang={language} nonce={nonce}>
           {children}
         </RootProviders>

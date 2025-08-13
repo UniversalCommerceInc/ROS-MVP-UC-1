@@ -16,6 +16,7 @@ import {
 } from '@kit/ui/dialog';
 import { Input } from '@kit/ui/input';
 import { cn } from '@kit/ui/utils';
+import { cleanCompanyName } from '../_lib/utils';
 
 // import { useToast } from '@kit/ui/use-toast';
 
@@ -272,8 +273,8 @@ export default function NewDealModal({
   // Analyze company website using existing company-info API
   const analyzeWebsite = async (website: string): Promise<string> => {
     try {
-      // Extract company name from website URL for the API
-      const companyName = website.replace(/https?:\/\//, '').replace(/www\./, '').split('.')[0] || 'unknown';
+      // Extract company name from website URL for the API using the utility function
+      const companyName = cleanCompanyName(website) || 'unknown';
       
       const response = await fetch(`/api/company-info?company=${encodeURIComponent(companyName)}`);
 
@@ -388,7 +389,7 @@ export default function NewDealModal({
   const createDeal = async () => {
     try {
       const finalDeal = {
-        companyName: dealData.companyName || dealData.companyWebsite?.replace(/https?:\/\//, '').replace(/\/$/, ''),
+        companyName: cleanCompanyName(dealData.companyName || dealData.companyWebsite),
         industry: dealData.industry || 'Technology', // Default fallback
         dealValue: 0, // Will be updated later
         currency: 'USD',

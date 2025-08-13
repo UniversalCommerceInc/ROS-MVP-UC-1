@@ -82,24 +82,38 @@ export function IntegrationConnectButton({
 
   const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
 
+  const handleImport = () => {
+    // Navigate to the import page for the platform
+    router.push(`/home/${accountName}/import/${platform}`);
+  };
+
   if (isConnected) {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={handleDisconnect}
-        disabled={isDisconnecting}
-      >
-        {isDisconnecting ? (
-          <div className="flex items-center">
-            <div className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-            Disconnecting...
-          </div>
-        ) : (
-          'Disconnect'
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          className="flex-1"
+          onClick={handleImport}
+        >
+          Import
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={handleDisconnect}
+          disabled={isDisconnecting}
+        >
+          {isDisconnecting ? (
+            <div className="flex items-center">
+              <div className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+              Disconnecting...
+            </div>
+          ) : (
+            'Disconnect'
+          )}
+        </Button>
+      </div>
     );
   }
 

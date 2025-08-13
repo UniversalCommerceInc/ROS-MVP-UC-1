@@ -17,10 +17,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
-          extensions?: Json
           operationName?: string
-          query?: string
+          extensions?: Json
           variables?: Json
+          query?: string
         }
         Returns: Json
       }
@@ -627,8 +627,10 @@ export type Database = {
           account_id: string
           ai_analysis_raw: string | null
           ai_insights: Json | null
+          assigned_to: string | null
           blockers: string[] | null
           close_date: string | null
+          company_description: string | null
           company_name: string
           company_size: string | null
           competitor_mentions: string[] | null
@@ -636,6 +638,8 @@ export type Database = {
           created_by: string | null
           deal_id: string | null
           deal_title: string | null
+          email_summary: string | null
+          email_summary_updated_at: string | null
           green_flags: string[] | null
           id: string
           industry: string
@@ -675,8 +679,10 @@ export type Database = {
           account_id: string
           ai_analysis_raw?: string | null
           ai_insights?: Json | null
+          assigned_to?: string | null
           blockers?: string[] | null
           close_date?: string | null
+          company_description?: string | null
           company_name: string
           company_size?: string | null
           competitor_mentions?: string[] | null
@@ -684,6 +690,8 @@ export type Database = {
           created_by?: string | null
           deal_id?: string | null
           deal_title?: string | null
+          email_summary?: string | null
+          email_summary_updated_at?: string | null
           green_flags?: string[] | null
           id?: string
           industry: string
@@ -723,8 +731,10 @@ export type Database = {
           account_id?: string
           ai_analysis_raw?: string | null
           ai_insights?: Json | null
+          assigned_to?: string | null
           blockers?: string[] | null
           close_date?: string | null
+          company_description?: string | null
           company_name?: string
           company_size?: string | null
           competitor_mentions?: string[] | null
@@ -732,6 +742,8 @@ export type Database = {
           created_by?: string | null
           deal_id?: string | null
           deal_title?: string | null
+          email_summary?: string | null
+          email_summary_updated_at?: string | null
           green_flags?: string[] | null
           id?: string
           industry?: string
@@ -966,7 +978,7 @@ export type Database = {
           scope: string | null
           updated_at: string
           user_id: string
-          user_info: Json | null
+          user_info: Json
         }
         Insert: {
           account_id: string
@@ -978,7 +990,7 @@ export type Database = {
           scope?: string | null
           updated_at?: string
           user_id: string
-          user_info?: Json | null
+          user_info?: Json
         }
         Update: {
           account_id?: string
@@ -990,7 +1002,7 @@ export type Database = {
           scope?: string | null
           updated_at?: string
           user_id?: string
-          user_info?: Json | null
+          user_info?: Json
         }
         Relationships: [
           {
@@ -2447,22 +2459,26 @@ export type Database = {
     }
     Functions: {
       accept_invitation: {
-        Args: { user_id: string; token: string }
+        Args: { token: string; user_id: string }
         Returns: string
       }
       add_invitations_to_account: {
         Args: {
-          account_slug: string
           invitations: Database["public"]["CompositeTypes"]["invitation"][]
+          account_slug: string
         }
         Returns: Database["public"]["Tables"]["invitations"]["Row"][]
       }
       can_action_account_member: {
-        Args: { target_team_account_id: string; target_user_id: string }
+        Args: { target_user_id: string; target_team_account_id: string }
+        Returns: boolean
+      }
+      can_assign_deal_to_user: {
+        Args: { target_account_id: string; target_user_id: string }
         Returns: boolean
       }
       create_invitation: {
-        Args: { role: string; email: string; account_id: string }
+        Args: { email: string; role: string; account_id: string }
         Returns: {
           account_id: string
           created_at: string
@@ -2477,12 +2493,12 @@ export type Database = {
       }
       create_nonce: {
         Args: {
-          p_purpose?: string
-          p_expires_in_seconds?: number
-          p_metadata?: Json
           p_revoke_previous?: boolean
-          p_scopes?: string[]
           p_user_id?: string
+          p_metadata?: Json
+          p_expires_in_seconds?: number
+          p_purpose?: string
+          p_scopes?: string[]
         }
         Returns: Json
       }
@@ -2506,32 +2522,41 @@ export type Database = {
       get_account_invitations: {
         Args: { account_slug: string }
         Returns: {
-          expires_at: string
-          inviter_name: string
-          inviter_email: string
+          account_id: string
           id: number
           email: string
-          account_id: string
           invited_by: string
           role: string
           created_at: string
           updated_at: string
+          expires_at: string
+          inviter_name: string
+          inviter_email: string
         }[]
       }
       get_account_members: {
         Args: { account_slug: string }
         Returns: {
-          role_hierarchy_level: number
-          role: string
-          id: string
           user_id: string
+          id: string
           account_id: string
-          picture_url: string
+          role: string
+          role_hierarchy_level: number
+          primary_owner_user_id: string
+          name: string
           email: string
+          picture_url: string
           created_at: string
           updated_at: string
+        }[]
+      }
+      get_account_members_for_assignment: {
+        Args: { target_account_id: string }
+        Returns: {
+          user_id: string
+          email: string
           name: string
-          primary_owner_user_id: string
+          account_role: string
         }[]
       }
       get_config: {
@@ -2540,10 +2565,10 @@ export type Database = {
       }
       get_gmail_emails: {
         Args: {
-          p_search?: string
           p_account_id: string
           p_limit?: number
           p_offset?: number
+          p_search?: string
           p_labels?: string[]
           p_sort_by?: string
           p_sort_direction?: string
@@ -2571,23 +2596,40 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      get_user_invitations: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: number
+          email: string
+          account_name: string
+          invite_token: string
+          role: string
+          invited_by_name: string
+          expires_at: string
+          invited_by: string
+          account_picture_url: string
+          account_slug: string
+          created_at: string
+          account_id: string
+        }[]
+      }
       has_active_subscription: {
         Args: { target_account_id: string }
         Returns: boolean
       }
       has_more_elevated_role: {
         Args: {
-          target_user_id: string
           target_account_id: string
           role_name: string
+          target_user_id: string
         }
         Returns: boolean
       }
       has_permission: {
         Args: {
-          user_id: string
           account_id: string
           permission_name: Database["public"]["Enums"]["app_permissions"]
+          user_id: string
         }
         Returns: boolean
       }
@@ -2597,9 +2639,9 @@ export type Database = {
       }
       has_same_role_hierarchy_level: {
         Args: {
-          target_user_id: string
           role_name: string
           target_account_id: string
+          target_user_id: string
         }
         Returns: boolean
       }
@@ -2628,41 +2670,41 @@ export type Database = {
         Returns: boolean
       }
       is_team_member: {
-        Args: { account_id: string; user_id: string }
+        Args: { user_id: string; account_id: string }
         Returns: boolean
       }
       revoke_nonce: {
-        Args: { p_reason?: string; p_id: string }
+        Args: { p_id: string; p_reason?: string }
         Returns: boolean
       }
       team_account_workspace: {
         Args: { account_slug: string }
         Returns: {
-          permissions: Database["public"]["Enums"]["app_permissions"][]
+          picture_url: string
           id: string
           name: string
-          picture_url: string
           slug: string
           role: string
           role_hierarchy_level: number
           primary_owner_user_id: string
           subscription_status: Database["public"]["Enums"]["subscription_status"]
+          permissions: Database["public"]["Enums"]["app_permissions"][]
         }[]
       }
       transfer_team_account_ownership: {
-        Args: { new_owner_id: string; target_account_id: string }
+        Args: { target_account_id: string; new_owner_id: string }
         Returns: undefined
       }
       upsert_order: {
         Args: {
-          target_customer_id: string
-          total_amount: number
-          billing_provider: Database["public"]["Enums"]["billing_provider"]
-          status: Database["public"]["Enums"]["payment_status"]
           target_account_id: string
-          target_order_id: string
-          line_items: Json
+          status: Database["public"]["Enums"]["payment_status"]
+          billing_provider: Database["public"]["Enums"]["billing_provider"]
+          total_amount: number
           currency: string
+          line_items: Json
+          target_customer_id: string
+          target_order_id: string
         }
         Returns: {
           account_id: string
@@ -2678,12 +2720,11 @@ export type Database = {
       }
       upsert_subscription: {
         Args: {
-          trial_ends_at?: string
+          status: Database["public"]["Enums"]["subscription_status"]
           target_account_id: string
           target_customer_id: string
           target_subscription_id: string
           active: boolean
-          status: Database["public"]["Enums"]["subscription_status"]
           billing_provider: Database["public"]["Enums"]["billing_provider"]
           cancel_at_period_end: boolean
           currency: string
@@ -2691,6 +2732,7 @@ export type Database = {
           period_ends_at: string
           line_items: Json
           trial_starts_at?: string
+          trial_ends_at?: string
         }
         Returns: {
           account_id: string
@@ -2711,13 +2753,13 @@ export type Database = {
       }
       verify_nonce: {
         Args: {
-          p_purpose: string
-          p_user_agent?: string
           p_max_verification_attempts?: number
+          p_ip?: unknown
           p_required_scopes?: string[]
           p_user_id?: string
-          p_ip?: unknown
+          p_purpose: string
           p_token: string
+          p_user_agent?: string
         }
         Returns: Json
       }
@@ -3018,15 +3060,15 @@ export type Database = {
     }
     Functions: {
       add_prefixes: {
-        Args: { _bucket_id: string; _name: string }
+        Args: { _name: string; _bucket_id: string }
         Returns: undefined
       }
       can_insert_object: {
-        Args: { owner: string; metadata: Json; bucketid: string; name: string }
+        Args: { owner: string; metadata: Json; name: string; bucketid: string }
         Returns: undefined
       }
       delete_prefix: {
-        Args: { _bucket_id: string; _name: string }
+        Args: { _name: string; _bucket_id: string }
         Returns: boolean
       }
       extension: {
@@ -3056,39 +3098,39 @@ export type Database = {
       get_size_by_bucket: {
         Args: Record<PropertyKey, never>
         Returns: {
-          bucket_id: string
           size: number
+          bucket_id: string
         }[]
       }
       list_multipart_uploads_with_delimiter: {
         Args: {
-          next_upload_token?: string
-          next_key_token?: string
           max_keys?: number
           delimiter_param: string
           prefix_param: string
           bucket_id: string
+          next_upload_token?: string
+          next_key_token?: string
         }
         Returns: {
           created_at: string
-          key: string
           id: string
+          key: string
         }[]
       }
       list_objects_with_delimiter: {
         Args: {
-          next_token?: string
-          start_after?: string
-          max_keys?: number
-          bucket_id: string
           delimiter_param: string
+          bucket_id: string
           prefix_param: string
+          max_keys?: number
+          start_after?: string
+          next_token?: string
         }
         Returns: {
           name: string
-          updated_at: string
-          metadata: Json
           id: string
+          metadata: Json
+          updated_at: string
         }[]
       }
       operation: {
@@ -3097,54 +3139,54 @@ export type Database = {
       }
       search: {
         Args: {
-          prefix: string
           sortcolumn?: string
           search?: string
           offsets?: number
           levels?: number
           limits?: number
           bucketname: string
+          prefix: string
           sortorder?: string
         }
         Returns: {
           name: string
-          id: string
-          metadata: Json
-          last_accessed_at: string
           created_at: string
+          metadata: Json
           updated_at: string
+          id: string
+          last_accessed_at: string
         }[]
       }
       search_legacy_v1: {
         Args: {
           prefix: string
-          sortorder?: string
-          sortcolumn?: string
-          search?: string
-          offsets?: number
           bucketname: string
-          levels?: number
           limits?: number
+          levels?: number
+          offsets?: number
+          search?: string
+          sortcolumn?: string
+          sortorder?: string
         }
         Returns: {
-          last_accessed_at: string
-          created_at: string
-          updated_at: string
-          id: string
-          name: string
           metadata: Json
+          name: string
+          id: string
+          updated_at: string
+          created_at: string
+          last_accessed_at: string
         }[]
       }
       search_v1_optimised: {
         Args: {
-          prefix: string
-          bucketname: string
-          limits?: number
           levels?: number
           offsets?: number
           search?: string
           sortcolumn?: string
           sortorder?: string
+          limits?: number
+          bucketname: string
+          prefix: string
         }
         Returns: {
           name: string
@@ -3166,9 +3208,9 @@ export type Database = {
         Returns: {
           key: string
           name: string
+          id: string
           updated_at: string
           created_at: string
-          id: string
           metadata: Json
         }[]
       }

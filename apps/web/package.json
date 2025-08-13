@@ -31,6 +31,7 @@
     "supabase:db:dump:local": "supabase db dump --local --data-only"
   },
   "dependencies": {
+    "@azure/msal-node": "^3.7.0",
     "@edge-csrf/nextjs": "2.5.3-cloudflare-rc1",
     "@hookform/resolvers": "^5.1.0",
     "@kit/accounts": "workspace:*",
@@ -87,6 +88,7 @@
     "@kit/tsconfig": "workspace:*",
     "@next/bundle-analyzer": "15.3.3",
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/microsoft-graph": "^2.40.1",
     "@types/node": "^22.15.30",
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.6",

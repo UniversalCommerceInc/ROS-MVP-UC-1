@@ -65,12 +65,38 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // Check if the contactId is a deal_contacts.id (UUID) or contact_id reference
+    // First try to find by deal_contacts.id (this is what we use in the Key People section)
+    let dealContact = await supabase
+      .from('deal_contacts')
+      .select('id, contact_id')
+      .eq('id', contactId)
+      .eq('deal_id', dealId)
+      .single();
+
+    // If not found, try to find by contact_id (for legacy compatibility)
+    if (dealContact.error) {
+      dealContact = await supabase
+        .from('deal_contacts')
+        .select('id, contact_id')
+        .eq('deal_id', dealId)
+        .eq('contact_id', contactId)
+        .single();
+    }
+
+    if (dealContact.error || !dealContact.data) {
+      return NextResponse.json(
+        { error: 'Contact not linked to this deal' },
+        { status: 404 },
+      );
+    }
+
     // Delete the deal-contact relationship
     const { error: deleteError } = await supabase
       .from('deal_contacts')
       .delete()
-      .eq('deal_id', dealId)
-      .eq('contact_id', contactId);
+      .eq('id', dealContact.data.id)
+      .eq('deal_id', dealId);
 
     if (deleteError) {
       console.error('Error removing contact from deal:', deleteError);

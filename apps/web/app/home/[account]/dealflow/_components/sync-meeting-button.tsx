@@ -55,7 +55,7 @@ export default function SyncMeetingButton({ dealId }: SyncMeetingButtonProps) {
         <DialogTitle>Sync Meeting</DialogTitle>
         <DialogDescription>
           {isSupabaseAvailable
-            ? 'Enter the MeetGeek meeting ID to sync its data with this deal.'
+            ? 'Enter the AI Notetaker meeting ID to sync its data with this deal.'
             : 'Demo mode: Supabase environment variables not detected. This will simulate syncing.'}
         </DialogDescription>
 
@@ -83,7 +83,7 @@ export default function SyncMeetingButton({ dealId }: SyncMeetingButtonProps) {
               id="meeting-id"
               value={meetingId}
               onChange={(e) => setMeetingId(e.target.value)}
-              placeholder="Enter MeetGeek meeting ID"
+              placeholder="Enter AI Notetaker meeting ID"
               className="col-span-3 border-gray-700 bg-gray-800"
             />
           </div>

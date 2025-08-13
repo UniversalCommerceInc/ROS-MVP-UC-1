@@ -17,6 +17,7 @@ export default async function DealFlowPageServer({
 
   return <DealFlowClient 
     accountId={workspace.account.id} 
+    accountSlug={workspace.account.slug}
     userId={workspace.user.id}
   />;
 }
